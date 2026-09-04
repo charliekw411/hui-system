@@ -1,0 +1,220 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+
+export const prerender = false;
+---
+
+<AdminLayout title="Dashboard" active="dashboard">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="font-heading text-2xl font-semibold text-forest">Hui Dashboard</h1>
+      <p class="mt-1 text-forest/70">Manage all hui for the trust.</p>
+    </div>
+    <a
+      href="/admin/hui/new"
+      class="rounded-lg bg-forest px-5 py-2.5 font-semibold text-cream transition-colors hover:bg-forest-light"
+    >
+      + New Hui
+    </a>
+  </div>
+
+  <div id="dash-alert" class="mt-4 hidden rounded-lg border px-4 py-3 text-sm" role="alert"></div>
+
+  <div id="loading" class="mt-10 text-center text-forest/60">Loading hui…</div>
+
+  <div id="empty" class="mt-10 hidden rounded-xl border border-cream-dark bg-white px-6 py-10 text-center">
+    <p class="font-heading text-lg text-forest">No hui yet.</p>
+    <p class="mt-2 text-forest/70">Create your first hui to get started.</p>
+  </div>
+
+  <div id="table-wrap" class="mt-6 hidden overflow-hidden rounded-xl border border-cream-dark bg-white">
+    <table class="w-full text-left text-sm">
+      <thead class="bg-cream-dark/50 text-xs uppercase tracking-wider text-forest/70">
+        <tr>
+          <th class="px-4 py-3">Title</th>
+          <th class="px-4 py-3">Date</th>
+          <th class="px-4 py-3">Status</th>
+          <th class="px-4 py-3 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="hui-rows" class="divide-y divide-cream-dark"></tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<script>
+  import { createBrowserClient, type Hui } from '../../lib/supabase';
+
+  const env = (window as any).__PUBLIC_ENV__ ?? {};
+  const API_BASE = (env.API_BASE ?? '/api').replace(/\/$/, '');
+
+  const loading = document.getElementById('loading')!;
+  const empty = document.getElementById('empty')!;
+  const tableWrap = document.getElementById('table-wrap')!;
+  const rows = document.getElementById('hui-rows')!;
+  const alertBox = document.getElementById('dash-alert')!;
+
+  function showAlert(kind: 'error' | 'success', message: string) {
+    alertBox.textContent = message;
+    alertBox.className =
+      'mt-4 rounded-lg border px-4 py-3 text-sm ' +
+      (kind === 'error'
+        ? 'border-red-300 bg-red-50 text-red-800'
+        : 'border-green-300 bg-green-50 text-green-800');
+    alertBox.classList.remove('hidden');
+  }
+
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
+    loading.classList.add('hidden');
+    showAlert('error', 'Configuration error: Supabase environment variables are missing.');
+  }
+
+  const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+
+  if (new URLSearchParams(location.search).get('saved') === '1') {
+    showAlert('success', 'Hui saved successfully.');
+    history.replaceState(null, '', '/admin');
+  }
+
+  async function getToken(): Promise<string | null> {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
+  const statusBadge: Record<string, string> = {
+    draft: 'bg-gray-200 text-gray-700',
+    published: 'bg-green-200 text-green-800',
+    cancelled: 'bg-red-200 text-red-800',
+  };
+
+  function fmtDate(iso: string): string {
+    return new Intl.DateTimeFormat('en-NZ', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Pacific/Auckland',
+    }).format(new Date(iso));
+  }
+
+  function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+  }
+
+  async function apiCall(path: string, method: string, body?: unknown): Promise<Response> {
+    const token = await getToken();
+    if (!token) {
+      window.location.href = '/admin/login';
+      throw new Error('Not authenticated');
+    }
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    return fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  function render(list: Hui[]) {
+    loading.classList.add('hidden');
+    if (list.length === 0) {
+      empty.classList.remove('hidden');
+      tableWrap.classList.add('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+    tableWrap.classList.remove('hidden');
+    rows.innerHTML = '';
+
+    for (const hui of list) {
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-cream/40';
+      const badge = statusBadge[hui.status] ?? 'bg-gray-200 text-gray-700';
+      const publishBtn =
+        hui.status !== 'published'
+          ? `<button data-action="publish" data-id="${hui.id}" class="text-green-700 hover:underline">Publish</button>`
+          : '';
+      const cancelBtn =
+        hui.status !== 'cancelled'
+          ? `<button data-action="cancel" data-id="${hui.id}" class="text-amber-700 hover:underline">Cancel</button>`
+          : '';
+
+      tr.innerHTML = `
+        <td class="px-4 py-3 font-medium text-forest">${escapeHtml(hui.title)}</td>
+        <td class="px-4 py-3 text-forest/80">${fmtDate(hui.scheduled_at)}</td>
+        <td class="px-4 py-3">
+          <span class="rounded-full px-3 py-0.5 text-xs font-semibold uppercase ${badge}">${hui.status}</span>
+        </td>
+        <td class="px-4 py-3">
+          <div class="flex items-center justify-end gap-4">
+            <a href="/admin/hui/${hui.id}" class="text-forest hover:underline">Edit</a>
+            ${publishBtn}
+            ${cancelBtn}
+            <button data-action="delete" data-id="${hui.id}" class="text-red-700 hover:underline">Delete</button>
+          </div>
+        </td>`;
+      rows.appendChild(tr);
+    }
+
+    rows.querySelectorAll('button[data-action]').forEach((btn) => {
+      btn.addEventListener('click', () => handleAction(btn as HTMLButtonElement));
+    });
+  }
+
+  async function errMsg(res: Response, fallback: string): Promise<string> {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return body.error || fallback;
+  }
+
+  async function handleAction(btn: HTMLButtonElement) {
+    const action = btn.dataset.action!;
+    const id = btn.dataset.id!;
+
+    try {
+      if (action === 'publish') {
+        const res = await apiCall(`/hui/${id}/publish`, 'POST');
+        if (!res.ok) throw new Error(await errMsg(res, 'Publish failed'));
+        showAlert('success', 'Hui published.');
+      } else if (action === 'cancel') {
+        if (!confirm('Mark this hui as cancelled?')) return;
+        const res = await apiCall(`/hui/${id}`, 'PATCH', { status: 'cancelled' });
+        if (!res.ok) throw new Error(await errMsg(res, 'Cancel failed'));
+        showAlert('success', 'Hui cancelled.');
+      } else if (action === 'delete') {
+        if (!confirm('Delete this hui permanently? This cannot be undone.')) return;
+        const res = await apiCall(`/hui/${id}`, 'DELETE');
+        if (!res.ok) throw new Error(await errMsg(res, 'Delete failed'));
+        showAlert('success', 'Hui deleted.');
+      }
+      await load();
+    } catch (err) {
+      showAlert('error', err instanceof Error ? err.message : 'Action failed.');
+    }
+  }
+
+  async function load() {
+    const token = await getToken();
+    if (!token) {
+      window.location.href = '/admin/login';
+      return;
+    }
+    loading.classList.remove('hidden');
+    const res = await fetch(`${API_BASE}/hui`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) {
+      window.location.href = '/admin/login';
+      return;
+    }
+    if (!res.ok) {
+      loading.classList.add('hidden');
+      showAlert('error', 'Failed to load hui.');
+      return;
+    }
+    const data = (await res.json()) as { hui?: Hui[] };
+    render(data.hui ?? []);
+  }
+
+  load();
+</script>

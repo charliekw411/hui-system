@@ -1,0 +1,154 @@
+---
+import type { Hui } from '../lib/supabase';
+
+export interface Props {
+  hui: Hui;
+  variant?: 'featured' | 'archive';
+}
+
+const { hui, variant = 'featured' } = Astro.props;
+
+const date = new Date(hui.scheduled_at);
+const dateLabel = new Intl.DateTimeFormat('en-NZ', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'Pacific/Auckland',
+}).format(date);
+const timeLabel = new Intl.DateTimeFormat('en-NZ', {
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+  timeZone: 'Pacific/Auckland',
+}).format(date);
+
+const documents = hui.documents ?? [];
+const agenda = documents.filter((d) => d.type === 'agenda');
+const attachments = documents.filter((d) => d.type === 'document');
+const isCancelled = hui.status === 'cancelled';
+---
+
+{
+  variant === 'featured' ? (
+    <article class="rounded-2xl border border-gold/40 bg-white shadow-sm overflow-hidden">
+      <div class="bg-forest px-6 py-3 text-cream flex items-center justify-between">
+        <span class="text-xs uppercase tracking-[0.25em] text-gold">Next Hui</span>
+        {isCancelled && (
+          <span class="rounded-full bg-red-700 px-3 py-0.5 text-xs font-semibold uppercase tracking-wide">
+            Cancelled
+          </span>
+        )}
+      </div>
+      <div class="px-6 py-8 sm:px-10">
+        <h2 class="font-heading text-2xl sm:text-3xl font-semibold text-forest">{hui.title}</h2>
+
+        <dl class="mt-6 grid gap-4 sm:grid-cols-2">
+          <div>
+            <dt class="text-xs uppercase tracking-wider text-gold-dark">Date</dt>
+            <dd class="mt-1 text-lg">{dateLabel}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-wider text-gold-dark">Time</dt>
+            <dd class="mt-1 text-lg">{timeLabel}</dd>
+          </div>
+          {hui.location && (
+            <div class="sm:col-span-2">
+              <dt class="text-xs uppercase tracking-wider text-gold-dark">Location</dt>
+              <dd class="mt-1 text-lg">{hui.location}</dd>
+            </div>
+          )}
+        </dl>
+
+        {hui.description && (
+          <p class="mt-6 whitespace-pre-line leading-relaxed text-forest/90">{hui.description}</p>
+        )}
+
+        {!isCancelled && hui.zoom_link && (
+          <div class="mt-8 rounded-xl bg-cream-dark/60 p-5">
+            <a
+              href={hui.zoom_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-2 rounded-lg bg-forest px-6 py-3 font-semibold text-cream transition-colors hover:bg-forest-light"
+            >
+              Join Zoom
+            </a>
+            {hui.zoom_passcode && (
+              <p class="mt-3 text-sm">
+                Passcode: <span class="font-mono font-semibold">{hui.zoom_passcode}</span>
+              </p>
+            )}
+          </div>
+        )}
+
+        {(agenda.length > 0 || attachments.length > 0) && (
+          <div class="mt-8 space-y-4">
+            {agenda.length > 0 && (
+              <div>
+                <h3 class="text-xs uppercase tracking-wider text-gold-dark">Agenda</h3>
+                <ul class="mt-2 space-y-1">
+                  {agenda.map((doc) => (
+                    <li>
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-2 text-forest underline hover:text-gold-dark"
+                      >
+                        ⬇ {doc.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {attachments.length > 0 && (
+              <div>
+                <h3 class="text-xs uppercase tracking-wider text-gold-dark">Documents</h3>
+                <ul class="mt-2 space-y-1">
+                  {attachments.map((doc) => (
+                    <li>
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-2 text-forest underline hover:text-gold-dark"
+                      >
+                        ⬇ {doc.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
+  ) : (
+    <article class="rounded-xl border border-cream-dark bg-white/70 px-5 py-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="font-heading text-lg font-semibold text-forest">{hui.title}</h3>
+        <span class="text-sm text-forest/70">{dateLabel}</span>
+      </div>
+      {hui.location && <p class="mt-1 text-sm text-forest/70">{hui.location}</p>}
+      {documents.length > 0 && (
+        <ul class="mt-3 flex flex-wrap gap-3 text-sm">
+          {documents.map((doc) => (
+            <li>
+              <a
+                href={doc.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="underline hover:text-gold-dark"
+              >
+                ⬇ {doc.name}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  )
+}

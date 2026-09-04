@@ -1,0 +1,45 @@
+---
+import AdminNav from '../components/AdminNav.astro';
+
+export interface Props {
+  title?: string;
+  active?: 'dashboard' | 'new' | 'edit';
+}
+
+const { title = 'Admin', active = 'dashboard' } = Astro.props;
+
+const runtime = (Astro.locals as any)?.runtime?.env ?? {};
+const meta = import.meta.env as Record<string, string | undefined>;
+
+const PUBLIC_ENV = {
+  SUPABASE_URL: runtime.SUPABASE_URL ?? meta.SUPABASE_URL ?? meta.PUBLIC_SUPABASE_URL ?? '',
+  SUPABASE_ANON_KEY: runtime.SUPABASE_ANON_KEY ?? meta.SUPABASE_ANON_KEY ?? meta.PUBLIC_SUPABASE_ANON_KEY ?? '',
+  API_BASE: runtime.PUBLIC_API_BASE ?? meta.PUBLIC_API_BASE ?? '/api',
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>{title} · Pehiāweri B1B Admin</title>
+    <script is:inline define:vars={{ PUBLIC_ENV }}>
+      window.__PUBLIC_ENV__ = PUBLIC_ENV;
+    </script>
+  </head>
+  <body class="min-h-screen bg-cream font-body text-forest antialiased">
+    <AdminNav active={active} />
+    <main class="mx-auto max-w-5xl px-6 py-10">
+      <slot />
+    </main>
+  </body>
+</html>

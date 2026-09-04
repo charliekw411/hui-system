@@ -1,0 +1,128 @@
+---
+export const prerender = false;
+
+const runtime = (Astro.locals as any)?.runtime?.env ?? {};
+const meta = import.meta.env as Record<string, string | undefined>;
+const PUBLIC_ENV = {
+  SUPABASE_URL: runtime.SUPABASE_URL ?? meta.SUPABASE_URL ?? meta.PUBLIC_SUPABASE_URL ?? '',
+  SUPABASE_ANON_KEY: runtime.SUPABASE_ANON_KEY ?? meta.SUPABASE_ANON_KEY ?? meta.PUBLIC_SUPABASE_ANON_KEY ?? '',
+  API_BASE: runtime.PUBLIC_API_BASE ?? meta.PUBLIC_API_BASE ?? '/api',
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>Trustee login · Pehiāweri B1B</title>
+    <script is:inline define:vars={{ PUBLIC_ENV }}>
+      window.__PUBLIC_ENV__ = PUBLIC_ENV;
+    </script>
+  </head>
+  <body class="min-h-screen bg-forest font-body text-forest antialiased flex items-center justify-center px-6">
+    <div class="w-full max-w-md">
+      <div class="text-center text-cream">
+        <h1 class="font-heading text-3xl font-semibold">Pehiāweri B1B</h1>
+        <p class="mt-1 text-xs uppercase tracking-[0.3em] text-gold">Ahu Whenua Trust</p>
+        <p class="mt-3 font-heading italic text-gold/90">oranga whenua · oranga reo</p>
+      </div>
+
+      <div class="mt-8 rounded-2xl bg-cream p-8 shadow-xl">
+        <h2 class="font-heading text-xl font-semibold text-forest">Trustee login</h2>
+        <p class="mt-1 text-sm text-forest/70">Sign in to manage hui.</p>
+
+        <div id="login-alert" class="mt-4 hidden rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></div>
+
+        <form id="login-form" class="mt-6 space-y-4">
+          <div>
+            <label class="block text-sm font-semibold" for="email">Email</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autocomplete="username"
+              class="mt-1 w-full rounded-lg border border-cream-dark bg-white px-3 py-2 shadow-sm focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-semibold" for="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password"
+              class="mt-1 w-full rounded-lg border border-cream-dark bg-white px-3 py-2 shadow-sm focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+            />
+          </div>
+          <button
+            id="login-btn"
+            type="submit"
+            class="w-full rounded-lg bg-forest px-6 py-3 font-semibold text-cream transition-colors hover:bg-forest-light disabled:opacity-60"
+          >
+            Sign in
+          </button>
+        </form>
+
+        <p class="mt-6 text-center text-sm">
+          <a href="/" class="text-forest/70 underline hover:text-gold-dark">← Back to public site</a>
+        </p>
+      </div>
+    </div>
+
+    <script>
+      import { createBrowserClient } from '../../lib/supabase';
+
+      const env = (window as any).__PUBLIC_ENV__ ?? {};
+      const form = document.getElementById('login-form') as HTMLFormElement;
+      const alertBox = document.getElementById('login-alert') as HTMLDivElement;
+      const btn = document.getElementById('login-btn') as HTMLButtonElement;
+
+      function showError(msg: string) {
+        alertBox.textContent = msg;
+        alertBox.classList.remove('hidden');
+      }
+
+      if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
+        showError('Configuration error: Supabase environment variables are missing.');
+      }
+
+      const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+
+      // If already signed in, go straight to the dashboard.
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) window.location.href = '/admin';
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        alertBox.classList.add('hidden');
+        btn.disabled = true;
+        btn.textContent = 'Signing in…';
+
+        const fd = new FormData(form);
+        const email = String(fd.get('email') || '').trim();
+        const password = String(fd.get('password') || '');
+
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          showError(error.message || 'Invalid email or password.');
+          btn.disabled = false;
+          btn.textContent = 'Sign in';
+          return;
+        }
+        window.location.href = '/admin';
+      });
+    </script>
+  </body>
+</html>

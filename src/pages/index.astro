@@ -1,0 +1,88 @@
+---
+import Layout from '../layouts/Layout.astro';
+import HuiCard from '../components/HuiCard.astro';
+import { createClient } from '@supabase/supabase-js';
+import type { Hui } from '../lib/supabase';
+
+export const prerender = false;
+
+const runtime = (Astro.locals as any)?.runtime?.env ?? {};
+const meta = import.meta.env as Record<string, string | undefined>;
+const SUPABASE_URL = runtime.SUPABASE_URL ?? meta.SUPABASE_URL ?? meta.PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = runtime.SUPABASE_ANON_KEY ?? meta.SUPABASE_ANON_KEY ?? meta.PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+let nextHui: Hui | null = null;
+let previousHui: Hui[] = [];
+let loadError = '';
+
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const nowIso = new Date().toISOString();
+
+  const [{ data: upcoming, error: upErr }, { data: past, error: pastErr }] = await Promise.all([
+    supabase
+      .from('hui')
+      .select('*, documents(*)')
+      .eq('status', 'published')
+      .gte('scheduled_at', nowIso)
+      .order('scheduled_at', { ascending: true })
+      .limit(1),
+    supabase
+      .from('hui')
+      .select('*, documents(*)')
+      .eq('status', 'published')
+      .lt('scheduled_at', nowIso)
+      .order('scheduled_at', { ascending: false })
+      .limit(20),
+  ]);
+
+  if (upErr || pastErr) {
+    loadError = upErr?.message ?? pastErr?.message ?? 'Failed to load hui.';
+  }
+  nextHui = (upcoming && upcoming[0]) ?? null;
+  previousHui = past ?? [];
+} else {
+  loadError = 'The site is not yet configured. Please set the Supabase environment variables.';
+}
+---
+
+<Layout title="Hui · Pehiāweri B1B Ahu Whenua Trust">
+  <section>
+    <h2 class="font-heading text-2xl font-semibold text-forest">Ngā Hui — Trust Meetings</h2>
+    <p class="mt-2 text-forest/80">
+      Information about upcoming and past hui of the Pehiāweri B1B Ahu Whenua Trust.
+    </p>
+  </section>
+
+  {loadError && (
+    <div class="mt-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+      {loadError}
+    </div>
+  )}
+
+  <section class="mt-8">
+    {nextHui ? (
+      <HuiCard hui={nextHui} variant="featured" />
+    ) : (
+      !loadError && (
+        <div class="rounded-2xl border border-gold/40 bg-white px-6 py-10 text-center">
+          <p class="font-heading text-xl text-forest">No hui is currently scheduled.</p>
+          <p class="mt-2 text-forest/70">Please check back soon for the next pānui.</p>
+        </div>
+      )
+    )}
+  </section>
+
+  {previousHui.length > 0 && (
+    <section class="mt-12">
+      <h2 class="font-heading text-xl font-semibold text-forest">Previous Hui</h2>
+      <div class="mt-4 space-y-3">
+        {previousHui.map((hui) => (
+          <HuiCard hui={hui} variant="archive" />
+        ))}
+      </div>
+    </section>
+  )}
+</Layout>

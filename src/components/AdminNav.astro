@@ -1,0 +1,55 @@
+---
+export interface Props {
+  active?: 'dashboard' | 'new' | 'edit';
+}
+
+const { active = 'dashboard' } = Astro.props;
+
+const linkBase = 'text-sm font-medium transition-colors hover:text-gold';
+const activeCls = 'text-gold';
+const idleCls = 'text-cream/80';
+---
+
+<nav class="bg-forest text-cream">
+  <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+    <a href="/admin" class="flex flex-col leading-tight">
+      <span class="font-heading text-lg font-semibold">Pehiāweri B1B</span>
+      <span class="text-[0.65rem] uppercase tracking-[0.25em] text-gold">Trustee Admin</span>
+    </a>
+    <div class="flex items-center gap-6">
+      <a href="/admin" class={`${linkBase} ${active === 'dashboard' ? activeCls : idleCls}`}>
+        Dashboard
+      </a>
+      <a href="/admin/hui/new" class={`${linkBase} ${active === 'new' ? activeCls : idleCls}`}>
+        New Hui
+      </a>
+      <a href="/" class={`${linkBase} ${idleCls}`} target="_blank" rel="noopener">
+        View site ↗
+      </a>
+      <button
+        id="admin-logout"
+        type="button"
+        class="rounded-lg border border-gold/50 px-3 py-1.5 text-sm font-medium text-gold transition-colors hover:bg-gold hover:text-forest"
+      >
+        Sign out
+      </button>
+    </div>
+  </div>
+</nav>
+
+<script>
+  import { createBrowserClient } from '../lib/supabase';
+
+  const env = (window as any).__PUBLIC_ENV__ ?? {};
+  const btn = document.getElementById('admin-logout');
+  btn?.addEventListener('click', async () => {
+    try {
+      if (env.SUPABASE_URL && env.SUPABASE_ANON_KEY) {
+        const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+        await supabase.auth.signOut();
+      }
+    } finally {
+      window.location.href = '/admin/login';
+    }
+  });
+</script>

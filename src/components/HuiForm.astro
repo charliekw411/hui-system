@@ -1,0 +1,354 @@
+---
+import type { Hui } from '../lib/supabase';
+
+export interface Props {
+  hui?: Hui | null;
+  mode: 'new' | 'edit';
+}
+
+const { hui = null, mode } = Astro.props;
+
+// Pre-fill datetime-local value in Pacific/Auckland local time.
+function toLocalInputValue(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  // Convert to NZ local wall-clock for the input.
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Pacific/Auckland',
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+}
+
+const initial = {
+  id: hui?.id ?? '',
+  title: hui?.title ?? '',
+  description: hui?.description ?? '',
+  scheduled_at_local: toLocalInputValue(hui?.scheduled_at),
+  location: hui?.location ?? '',
+  zoom_link: hui?.zoom_link ?? '',
+  zoom_passcode: hui?.zoom_passcode ?? '',
+  status: hui?.status ?? 'draft',
+  documents: hui?.documents ?? [],
+};
+
+const inputCls =
+  'mt-1 w-full rounded-lg border border-cream-dark bg-white px-3 py-2 text-forest shadow-sm focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold';
+const labelCls = 'block text-sm font-semibold text-forest';
+---
+
+<form id="hui-form" class="space-y-6" data-mode={mode} data-id={initial.id}>
+  <div
+    id="form-alert"
+    class="hidden rounded-lg border px-4 py-3 text-sm"
+    role="alert"
+  >
+  </div>
+
+  <div>
+    <label class={labelCls} for="title">Title <span class="text-red-600">*</span></label>
+    <input id="title" name="title" type="text" required value={initial.title} class={inputCls} />
+  </div>
+
+  <div class="grid gap-6 sm:grid-cols-2">
+    <div>
+      <label class={labelCls} for="scheduled_at">Date &amp; time <span class="text-red-600">*</span></label>
+      <input
+        id="scheduled_at"
+        name="scheduled_at"
+        type="datetime-local"
+        required
+        value={initial.scheduled_at_local}
+        class={inputCls}
+      />
+      <p class="mt-1 text-xs text-forest/60">New Zealand time (Pacific/Auckland)</p>
+    </div>
+    <div>
+      <label class={labelCls} for="location">Location</label>
+      <input id="location" name="location" type="text" value={initial.location} class={inputCls} />
+    </div>
+  </div>
+
+  <div>
+    <label class={labelCls} for="description">Description</label>
+    <textarea id="description" name="description" rows="4" class={inputCls}>{initial.description}</textarea>
+  </div>
+
+  <fieldset class="rounded-xl border border-cream-dark p-4">
+    <legend class="px-2 text-sm font-semibold text-forest">Zoom (paste your own link)</legend>
+    <div class="grid gap-6 sm:grid-cols-2">
+      <div>
+        <label class={labelCls} for="zoom_link">Zoom link</label>
+        <input
+          id="zoom_link"
+          name="zoom_link"
+          type="url"
+          placeholder="https://zoom.us/j/..."
+          value={initial.zoom_link}
+          class={inputCls}
+        />
+      </div>
+      <div>
+        <label class={labelCls} for="zoom_passcode">Zoom passcode</label>
+        <input
+          id="zoom_passcode"
+          name="zoom_passcode"
+          type="text"
+          value={initial.zoom_passcode}
+          class={inputCls}
+        />
+      </div>
+    </div>
+  </fieldset>
+
+  <div>
+    <label class={labelCls} for="status">Status</label>
+    <select id="status" name="status" class={inputCls}>
+      <option value="draft" selected={initial.status === 'draft'}>Draft</option>
+      <option value="published" selected={initial.status === 'published'}>Published</option>
+      <option value="cancelled" selected={initial.status === 'cancelled'}>Cancelled</option>
+    </select>
+  </div>
+
+  <fieldset class="rounded-xl border border-cream-dark p-4">
+    <legend class="px-2 text-sm font-semibold text-forest">Agenda (PDF)</legend>
+    <div id="existing-agenda" class="space-y-2"></div>
+    <label class={labelCls} for="agenda_file">Upload agenda PDF</label>
+    <input
+      id="agenda_file"
+      name="agenda_file"
+      type="file"
+      accept="application/pdf"
+      class="mt-1 block w-full text-sm text-forest file:mr-3 file:rounded-lg file:border-0 file:bg-forest file:px-4 file:py-2 file:text-cream hover:file:bg-forest-light"
+    />
+  </fieldset>
+
+  <fieldset class="rounded-xl border border-cream-dark p-4">
+    <legend class="px-2 text-sm font-semibold text-forest">Additional documents</legend>
+    <div id="existing-documents" class="space-y-2"></div>
+    <label class={labelCls} for="document_files">Upload documents (you can select several)</label>
+    <input
+      id="document_files"
+      name="document_files"
+      type="file"
+      multiple
+      class="mt-1 block w-full text-sm text-forest file:mr-3 file:rounded-lg file:border-0 file:bg-forest file:px-4 file:py-2 file:text-cream hover:file:bg-forest-light"
+    />
+  </fieldset>
+
+  <div class="flex flex-wrap items-center gap-3 pt-2">
+    <button
+      id="submit-btn"
+      type="submit"
+      class="rounded-lg bg-forest px-6 py-3 font-semibold text-cream transition-colors hover:bg-forest-light disabled:opacity-60"
+    >
+      {mode === 'new' ? 'Create Hui' : 'Save changes'}
+    </button>
+    <a href="/admin" class="rounded-lg border border-forest/30 px-6 py-3 font-semibold text-forest hover:bg-cream-dark">
+      Cancel
+    </a>
+  </div>
+</form>
+
+<script is:inline type="application/json" id="initial-documents" set:html={JSON.stringify(initial.documents)}></script>
+
+<script>
+  import { createBrowserClient, STORAGE_BUCKET, type HuiDocument } from '../lib/supabase';
+
+  const env = (window as any).__PUBLIC_ENV__ ?? {};
+  const API_BASE = (env.API_BASE ?? '/api').replace(/\/$/, '');
+
+  const form = document.getElementById('hui-form') as HTMLFormElement;
+  const alertBox = document.getElementById('form-alert') as HTMLDivElement;
+  const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+  const mode = form.dataset.mode as 'new' | 'edit';
+  const huiId = form.dataset.id || '';
+
+  const initialDocsEl = document.getElementById('initial-documents');
+  let existingDocs: HuiDocument[] = [];
+  try {
+    existingDocs = JSON.parse(initialDocsEl?.textContent || '[]');
+  } catch {
+    existingDocs = [];
+  }
+
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
+    showAlert('error', 'Configuration error: Supabase environment variables are missing.');
+  }
+
+  const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+
+  // Track which existing documents to keep.
+  const keep = new Set(existingDocs.map((d) => d.id));
+
+  function showAlert(kind: 'error' | 'success' | 'info', message: string) {
+    alertBox.textContent = message;
+    alertBox.className =
+      'rounded-lg border px-4 py-3 text-sm ' +
+      (kind === 'error'
+        ? 'border-red-300 bg-red-50 text-red-800'
+        : kind === 'success'
+          ? 'border-green-300 bg-green-50 text-green-800'
+          : 'border-gold/40 bg-cream-dark/60 text-forest');
+    alertBox.classList.remove('hidden');
+  }
+
+  function renderExisting() {
+    const agendaWrap = document.getElementById('existing-agenda')!;
+    const docWrap = document.getElementById('existing-documents')!;
+    agendaWrap.innerHTML = '';
+    docWrap.innerHTML = '';
+
+    for (const doc of existingDocs) {
+      if (!keep.has(doc.id)) continue;
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between gap-3 rounded-lg bg-cream-dark/40 px-3 py-2 text-sm';
+      const link = document.createElement('a');
+      link.href = doc.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.className = 'underline truncate';
+      link.textContent = doc.name;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'shrink-0 text-red-700 hover:underline';
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', () => {
+        keep.delete(doc.id);
+        renderExisting();
+      });
+      row.appendChild(link);
+      row.appendChild(remove);
+      (doc.type === 'agenda' ? agendaWrap : docWrap).appendChild(row);
+    }
+  }
+  renderExisting();
+
+  async function uploadFile(file: File, kind: 'agenda' | 'document'): Promise<{ name: string; url: string; type: 'agenda' | 'document' }> {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `${huiId || 'new'}/${kind}/${Date.now()}-${safeName}`;
+    const { error: upError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+    if (upError) throw new Error(`Upload failed for ${file.name}: ${upError.message}`);
+    const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+    return { name: file.name, url: data.publicUrl, type: kind };
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    alertBox.classList.add('hidden');
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.textContent;
+    submitBtn.textContent = 'Saving…';
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        window.location.href = '/admin/login';
+        return;
+      }
+
+      const fd = new FormData(form);
+      const title = String(fd.get('title') || '').trim();
+      const localDateTime = String(fd.get('scheduled_at') || '');
+      if (!title) throw new Error('Title is required.');
+      if (!localDateTime) throw new Error('Date & time is required.');
+
+      // datetime-local is wall-clock; interpret as NZ time and convert to ISO.
+      const scheduledIso = nzLocalToIso(localDateTime);
+
+      // Collect kept existing documents.
+      const documents = existingDocs
+        .filter((d) => keep.has(d.id))
+        .map((d) => ({ name: d.name, url: d.url, type: d.type }));
+
+      // Upload new agenda.
+      const agendaInput = document.getElementById('agenda_file') as HTMLInputElement;
+      if (agendaInput.files && agendaInput.files.length > 0) {
+        const uploaded = await uploadFile(agendaInput.files[0], 'agenda');
+        documents.push(uploaded);
+      }
+
+      // Upload new documents.
+      const docsInput = document.getElementById('document_files') as HTMLInputElement;
+      if (docsInput.files) {
+        for (const file of Array.from(docsInput.files)) {
+          const uploaded = await uploadFile(file, 'document');
+          documents.push(uploaded);
+        }
+      }
+
+      const payload = {
+        title,
+        description: String(fd.get('description') || '').trim() || null,
+        scheduled_at: scheduledIso,
+        location: String(fd.get('location') || '').trim() || null,
+        zoom_link: String(fd.get('zoom_link') || '').trim() || null,
+        zoom_passcode: String(fd.get('zoom_passcode') || '').trim() || null,
+        status: String(fd.get('status') || 'draft'),
+        documents,
+      };
+
+      const url = mode === 'new' ? `${API_BASE}/hui` : `${API_BASE}/hui/${huiId}`;
+      const method = mode === 'new' ? 'POST' : 'PATCH';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(result?.error || `Request failed (${res.status})`);
+      }
+
+      window.location.href = '/admin?saved=1';
+    } catch (err) {
+      showAlert('error', err instanceof Error ? err.message : 'Something went wrong.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
+  });
+
+  // Convert "YYYY-MM-DDTHH:mm" wall clock in Pacific/Auckland to a UTC ISO string.
+  function nzLocalToIso(local: string): string {
+    const [datePart, timePart] = local.split('T');
+    const [y, mo, d] = datePart.split('-').map(Number);
+    const [h, mi] = timePart.split(':').map(Number);
+    // Find the UTC instant whose NZ wall-clock equals the input.
+    // Start from a naive UTC guess then correct using the timezone offset.
+    const guess = Date.UTC(y, mo - 1, d, h, mi);
+    const offset = nzOffsetMs(new Date(guess));
+    return new Date(guess - offset).toISOString();
+  }
+
+  // Offset (ms) of Pacific/Auckland from UTC at a given instant.
+  function nzOffsetMs(date: Date): number {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Pacific/Auckland',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts = dtf.formatToParts(date);
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    const asUTC = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+    return asUTC - Math.floor(date.getTime() / 1000) * 1000;
+  }
+</script>

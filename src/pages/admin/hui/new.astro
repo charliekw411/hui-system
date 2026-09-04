@@ -1,0 +1,39 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import HuiForm from '../../../components/HuiForm.astro';
+
+export const prerender = false;
+---
+
+<AdminLayout title="New Hui" active="new">
+  <div id="auth-gate" class="hidden">
+    <div class="mb-6">
+      <h1 class="font-heading text-2xl font-semibold text-forest">Create a Hui</h1>
+      <p class="mt-1 text-forest/70">Fill in the details below. You can save as a draft and publish later.</p>
+    </div>
+    <HuiForm mode="new" />
+  </div>
+
+  <div id="auth-check" class="mt-10 text-center text-forest/60">Checking sign-in…</div>
+</AdminLayout>
+
+<script>
+  import { createBrowserClient } from '../../../lib/supabase';
+  const env = (window as any).__PUBLIC_ENV__ ?? {};
+  const gate = document.getElementById('auth-gate')!;
+  const check = document.getElementById('auth-check')!;
+
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
+    check.textContent = 'Configuration error: Supabase environment variables are missing.';
+  } else {
+    const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        window.location.href = '/admin/login';
+        return;
+      }
+      check.classList.add('hidden');
+      gate.classList.remove('hidden');
+    });
+  }
+</script>

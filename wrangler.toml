@@ -1,0 +1,22 @@
+name = "hui-system-api"
+main = "workers/api.ts"
+compatibility_date = "2024-09-09"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets / Pages output are served by Cloudflare Pages.
+# This Worker hosts the /api/* routes. Bind secrets with `wrangler secret put`.
+#
+# Required secrets (set via `wrangler secret put <NAME>`):
+#   SUPABASE_URL
+#   SUPABASE_ANON_KEY
+#   SUPABASE_SERVICE_ROLE_KEY
+#
+# For local dev, copy .env.example to .dev.vars (same KEY=VALUE format).
+
+[observability]
+enabled = true
+
+# Optional: route the Worker under your domain at /api/*
+# [[routes]]
+# pattern = "yourdomain.com/api/*"
+# zone_name = "yourdomain.com"
