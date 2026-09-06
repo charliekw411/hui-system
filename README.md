@@ -279,7 +279,9 @@ This section is written for a non-technical trustee. You only need a web browser
   either set the status to **Published** in the form, or click **Publish** next to
   the hui on the dashboard.
 - Only the **next upcoming published** hui appears at the top of the public page.
-  Past published hui appear in the **Previous Hui** archive.
+  Once its scheduled start time passes, a published hui moves to the **Previous Hui**
+  archive. Its **Join Zoom** button and passcode remain available there so whānau
+  can still join after the hui has started.
 
 ### Editing or cancelling a hui
 
