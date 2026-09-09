@@ -1,5 +1,6 @@
 ---
 import AdminNav from '../components/AdminNav.astro';
+import { getPublicEnv } from '../lib/supabase';
 
 export interface Props {
   title?: string;
@@ -8,14 +9,8 @@ export interface Props {
 
 const { title = 'Admin', active = 'dashboard' } = Astro.props;
 
-const runtime = (Astro.locals as any)?.runtime?.env ?? {};
-const meta = import.meta.env as Record<string, string | undefined>;
-
-const PUBLIC_ENV = {
-  SUPABASE_URL: runtime.SUPABASE_URL ?? meta.SUPABASE_URL ?? meta.PUBLIC_SUPABASE_URL ?? '',
-  SUPABASE_ANON_KEY: runtime.SUPABASE_ANON_KEY ?? meta.SUPABASE_ANON_KEY ?? meta.PUBLIC_SUPABASE_ANON_KEY ?? '',
-  API_BASE: runtime.PUBLIC_API_BASE ?? meta.PUBLIC_API_BASE ?? '/api',
-};
+const PUBLIC_ENV = getPublicEnv(Astro.locals.runtime?.env);
+Astro.response.headers.set('Cache-Control', 'no-store');
 ---
 
 <!doctype html>

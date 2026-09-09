@@ -17,6 +17,7 @@ const idleCls = 'text-cream/80';
       <span class="text-[0.65rem] uppercase tracking-[0.25em] text-gold">Trustee Admin</span>
     </a>
     <div class="flex items-center gap-6">
+      <span id="portal-user" class="text-xs text-cream/80" aria-live="polite"></span>
       <a href="/admin" class={`${linkBase} ${active === 'dashboard' ? activeCls : idleCls}`}>
         Dashboard
       </a>
@@ -36,20 +37,23 @@ const idleCls = 'text-cream/80';
     </div>
   </div>
 </nav>
+<p id="logout-error" class="hidden px-6 py-3 text-sm text-red-800" role="alert"></p>
 
 <script>
-  import { createBrowserClient } from '../lib/supabase';
+  import { getPortalClient } from '../lib/portal-client';
 
-  const env = (window as any).__PUBLIC_ENV__ ?? {};
-  const btn = document.getElementById('admin-logout');
+  const btn = document.getElementById('admin-logout') as HTMLButtonElement;
+  const alert = document.getElementById('logout-error')!;
   btn?.addEventListener('click', async () => {
+    btn.disabled = true;
     try {
-      if (env.SUPABASE_URL && env.SUPABASE_ANON_KEY) {
-        const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-        await supabase.auth.signOut();
-      }
-    } finally {
-      window.location.href = '/admin/login';
+      const { error } = await getPortalClient().auth.signOut();
+      if (error) throw error;
+      window.location.replace('/admin/login');
+    } catch (error) {
+      alert.textContent = error instanceof Error ? error.message : 'Sign-out failed. Please try again.';
+      alert.classList.remove('hidden');
+      btn.disabled = false;
     }
   });
 </script>

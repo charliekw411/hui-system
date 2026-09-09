@@ -5,6 +5,7 @@ export const prerender = false;
 ---
 
 <AdminLayout title="Dashboard" active="dashboard">
+  <div id="dashboard-content" class="hidden">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
       <h1 class="font-heading text-2xl font-semibold text-forest">Hui Dashboard</h1>
@@ -16,6 +17,7 @@ export const prerender = false;
     >
       + New Hui
     </a>
+  </div>
   </div>
 
   <div id="dash-alert" class="mt-4 hidden rounded-lg border px-4 py-3 text-sm" role="alert"></div>
@@ -43,16 +45,15 @@ export const prerender = false;
 </AdminLayout>
 
 <script>
-  import { createBrowserClient, type Hui } from '../../lib/supabase';
-
-  const env = (window as any).__PUBLIC_ENV__ ?? {};
-  const API_BASE = (env.API_BASE ?? '/api').replace(/\/$/, '');
+  import type { Hui } from '../../lib/supabase';
+  import { portalFetch, readApiResponse, requirePortalSession, showPortalError } from '../../lib/portal-client';
 
   const loading = document.getElementById('loading')!;
   const empty = document.getElementById('empty')!;
   const tableWrap = document.getElementById('table-wrap')!;
   const rows = document.getElementById('hui-rows')!;
   const alertBox = document.getElementById('dash-alert')!;
+  const content = document.getElementById('dashboard-content')!;
 
   function showAlert(kind: 'error' | 'success', message: string) {
     alertBox.textContent = message;
@@ -64,21 +65,9 @@ export const prerender = false;
     alertBox.classList.remove('hidden');
   }
 
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
-    loading.classList.add('hidden');
-    showAlert('error', 'Configuration error: Supabase environment variables are missing.');
-  }
-
-  const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-
   if (new URLSearchParams(location.search).get('saved') === '1') {
     showAlert('success', 'Hui saved successfully.');
     history.replaceState(null, '', '/admin');
-  }
-
-  async function getToken(): Promise<string | null> {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
   }
 
   const statusBadge: Record<string, string> = {
@@ -104,14 +93,9 @@ export const prerender = false;
   }
 
   async function apiCall(path: string, method: string, body?: unknown): Promise<Response> {
-    const token = await getToken();
-    if (!token) {
-      window.location.href = '/admin/login';
-      throw new Error('Not authenticated');
-    }
-    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    const headers: Record<string, string> = {};
     if (body !== undefined) headers['Content-Type'] = 'application/json';
-    return fetch(`${API_BASE}${path}`, {
+    return portalFetch(path, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -196,24 +180,20 @@ export const prerender = false;
   }
 
   async function load() {
-    const token = await getToken();
-    if (!token) {
-      window.location.href = '/admin/login';
-      return;
-    }
-    loading.classList.remove('hidden');
-    const res = await fetch(`${API_BASE}/hui`, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.status === 401) {
-      window.location.href = '/admin/login';
-      return;
-    }
-    if (!res.ok) {
+    try {
+      loading.classList.remove('hidden');
+      await requirePortalSession();
+      const data = await readApiResponse<{ hui: Hui[] }>(await portalFetch('/hui'));
+      content.classList.remove('hidden');
+      render(data.hui);
+    } catch (error) {
       loading.classList.add('hidden');
-      showAlert('error', 'Failed to load hui.');
-      return;
+      content.classList.add('hidden');
+      tableWrap.classList.add('hidden');
+      empty.classList.add('hidden');
+      showAlert('error', 'Unable to load hui.');
+      showPortalError(error, alertBox);
     }
-    const data = (await res.json()) as { hui?: Hui[] };
-    render(data.hui ?? []);
   }
 
   load();

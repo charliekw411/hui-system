@@ -12,6 +12,7 @@ dist/
 !.env.example
 .dev.vars
 .cftoken
+*.private.sql
 
 # cloudflare
 .wrangler/
