@@ -25,9 +25,11 @@ export interface Hui {
   documents?: HuiDocument[];
 }
 
-interface PublicEnv {
+export interface PublicEnv {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
+  API_BASE: string;
+  GOOGLE_SIGN_IN_ENABLED: boolean;
 }
 
 /**
@@ -54,22 +56,37 @@ export function getPublicEnv(runtimeEnv?: Record<string, unknown>): PublicEnv {
     throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables');
   }
 
-  return { SUPABASE_URL: url, SUPABASE_ANON_KEY: anonKey };
+  return {
+    SUPABASE_URL: url,
+    SUPABASE_ANON_KEY: anonKey,
+    API_BASE: fromRuntime('PUBLIC_API_BASE') ?? '/api',
+    GOOGLE_SIGN_IN_ENABLED: fromRuntime('PUBLIC_GOOGLE_SIGN_IN_ENABLED') === 'true',
+  };
 }
 
 /**
  * Create a Supabase client using the public anon key.
  * Used in the browser for auth (login) and direct Storage uploads.
  */
+const browserClients = new Map<string, SupabaseClient>();
+
 export function createBrowserClient(url: string, anonKey: string): SupabaseClient {
-  return createClient(url, anonKey, {
+  const key = `${url}:${anonKey}`;
+  if (typeof window !== 'undefined') {
+    const existing = browserClients.get(key);
+    if (existing) return existing;
+  }
+  const client = createClient(url, anonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
       storageKey: 'hui-admin-auth',
+      flowType: 'pkce',
     },
   });
+  if (typeof window !== 'undefined') browserClients.set(key, client);
+  return client;
 }
 
 export const STORAGE_BUCKET = 'hui-documents';

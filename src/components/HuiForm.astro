@@ -1,41 +1,20 @@
 ---
-import type { Hui } from '../lib/supabase';
-
 export interface Props {
-  hui?: Hui | null;
+  huiId?: string;
   mode: 'new' | 'edit';
 }
 
-const { hui = null, mode } = Astro.props;
-
-// Pre-fill datetime-local value in Pacific/Auckland local time.
-function toLocalInputValue(iso: string | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  // Convert to NZ local wall-clock for the input.
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Pacific/Auckland',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
-}
+const { huiId = '', mode } = Astro.props;
 
 const initial = {
-  id: hui?.id ?? '',
-  title: hui?.title ?? '',
-  description: hui?.description ?? '',
-  scheduled_at_local: toLocalInputValue(hui?.scheduled_at),
-  location: hui?.location ?? '',
-  zoom_link: hui?.zoom_link ?? '',
-  zoom_passcode: hui?.zoom_passcode ?? '',
-  status: hui?.status ?? 'draft',
-  documents: hui?.documents ?? [],
+  id: huiId,
+  title: '',
+  description: '',
+  scheduled_at_local: '',
+  location: '',
+  zoom_link: '',
+  zoom_passcode: '',
+  status: 'draft',
 };
 
 const inputCls =
@@ -51,6 +30,8 @@ const labelCls = 'block text-sm font-semibold text-forest';
   >
   </div>
 
+  <p id="form-loading" class="text-sm text-forest/70" role="status">Checking trustee access…</p>
+  <fieldset id="hui-fields" disabled class="space-y-6">
   <div>
     <label class={labelCls} for="title">Title <span class="text-red-600">*</span></label>
     <input id="title" name="title" type="text" required value={initial.title} class={inputCls} />
@@ -154,38 +135,23 @@ const labelCls = 'block text-sm font-semibold text-forest';
       Cancel
     </a>
   </div>
+  </fieldset>
 </form>
 
-<script is:inline type="application/json" id="initial-documents" set:html={JSON.stringify(initial.documents)}></script>
-
 <script>
-  import { createBrowserClient, STORAGE_BUCKET, type HuiDocument } from '../lib/supabase';
-
-  const env = (window as any).__PUBLIC_ENV__ ?? {};
-  const API_BASE = (env.API_BASE ?? '/api').replace(/\/$/, '');
+  import { STORAGE_BUCKET, type Hui, type HuiDocument } from '../lib/supabase';
+  import { getPortalClient, portalFetch, readApiResponse, requirePortalSession, showPortalError } from '../lib/portal-client';
 
   const form = document.getElementById('hui-form') as HTMLFormElement;
   const alertBox = document.getElementById('form-alert') as HTMLDivElement;
   const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
   const mode = form.dataset.mode as 'new' | 'edit';
   const huiId = form.dataset.id || '';
+  const fields = document.getElementById('hui-fields') as HTMLFieldSetElement;
+  const loading = document.getElementById('form-loading')!;
 
-  const initialDocsEl = document.getElementById('initial-documents');
   let existingDocs: HuiDocument[] = [];
-  try {
-    existingDocs = JSON.parse(initialDocsEl?.textContent || '[]');
-  } catch {
-    existingDocs = [];
-  }
-
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
-    showAlert('error', 'Configuration error: Supabase environment variables are missing.');
-  }
-
-  const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-
-  // Track which existing documents to keep.
-  const keep = new Set(existingDocs.map((d) => d.id));
+  const keep = new Set<string>();
 
   function showAlert(kind: 'error' | 'success' | 'info', message: string) {
     alertBox.textContent = message;
@@ -228,11 +194,49 @@ const labelCls = 'block text-sm font-semibold text-forest';
       (doc.type === 'agenda' ? agendaWrap : docWrap).appendChild(row);
     }
   }
-  renderExisting();
+  function toLocalInputValue(iso: string): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Pacific/Auckland',
+    }).formatToParts(new Date(iso));
+    const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+  }
+
+  async function initialiseForm() {
+    await requirePortalSession();
+    if (mode === 'edit') {
+      const { hui } = await readApiResponse<{ hui: Hui }>(await portalFetch(`/hui/${huiId}`));
+      const values: Record<string, string> = {
+        title: hui.title, description: hui.description ?? '',
+        scheduled_at: toLocalInputValue(hui.scheduled_at), location: hui.location ?? '',
+        zoom_link: hui.zoom_link ?? '', zoom_passcode: hui.zoom_passcode ?? '', status: hui.status,
+      };
+      for (const [name, value] of Object.entries(values)) {
+        const input = form.elements.namedItem(name);
+        if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement)) {
+          throw new Error(`Unable to initialise form field: ${name}`);
+        }
+        input.value = value;
+      }
+      existingDocs = hui.documents ?? [];
+      for (const document of existingDocs) keep.add(document.id);
+    }
+    renderExisting();
+    loading.classList.add('hidden');
+    fields.disabled = false;
+  }
+
+  initialiseForm().catch((error: unknown) => {
+    loading.classList.add('hidden');
+    showAlert('error', 'Unable to load this form.');
+    showPortalError(error, alertBox);
+  });
 
   async function uploadFile(file: File, kind: 'agenda' | 'document'): Promise<{ name: string; url: string; type: 'agenda' | 'document' }> {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const path = `${huiId || 'new'}/${kind}/${Date.now()}-${safeName}`;
+    const supabase = getPortalClient();
     const { error: upError } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(path, file, { cacheControl: '3600', upsert: false });
@@ -249,12 +253,7 @@ const labelCls = 'block text-sm font-semibold text-forest';
     submitBtn.textContent = 'Saving…';
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        window.location.href = '/admin/login';
-        return;
-      }
+      await requirePortalSession();
 
       const fd = new FormData(form);
       const title = String(fd.get('title') || '').trim();
@@ -297,22 +296,18 @@ const labelCls = 'block text-sm font-semibold text-forest';
         documents,
       };
 
-      const url = mode === 'new' ? `${API_BASE}/hui` : `${API_BASE}/hui/${huiId}`;
+      const path = mode === 'new' ? '/hui' : `/hui/${huiId}`;
       const method = mode === 'new' ? 'POST' : 'PATCH';
 
-      const res = await fetch(url, {
+      const res = await portalFetch(path, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
 
-      const result = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        throw new Error(result?.error || `Request failed (${res.status})`);
-      }
+      await readApiResponse(res);
 
       window.location.href = '/admin?saved=1';
     } catch (err) {

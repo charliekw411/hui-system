@@ -1,0 +1,56 @@
+---
+import { getPublicEnv } from '../../lib/supabase';
+
+export const prerender = false;
+const PUBLIC_ENV = getPublicEnv(Astro.locals.runtime?.env);
+Astro.response.headers.set('Cache-Control', 'no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Completing trustee sign-in</title>
+    <script is:inline define:vars={{ PUBLIC_ENV }}>
+      window.__PUBLIC_ENV__ = PUBLIC_ENV;
+    </script>
+  </head>
+  <body class="min-h-screen bg-cream p-8 font-body text-forest">
+    <main class="mx-auto max-w-md rounded-xl bg-white p-6">
+      <h1 class="text-xl font-semibold">Trustee sign-in</h1>
+      <p id="callback-status" class="mt-4" role="status">Checking your sign-in and trustee access…</p>
+      <a id="callback-retry" class="mt-4 hidden underline" href="/admin/login">Return to sign-in</a>
+    </main>
+    <script>
+      import { getPortalClient, requirePortalSession } from '../../lib/portal-client';
+
+      const status = document.getElementById('callback-status')!;
+      const retry = document.getElementById('callback-retry')!;
+
+      async function completeSignIn() {
+        const params = new URLSearchParams(window.location.search);
+        const fragment = new URLSearchParams(window.location.hash.slice(1));
+        if (params.has('error') || fragment.has('error')) {
+          history.replaceState(null, '', '/auth/callback');
+          throw new Error('Google sign-in was cancelled or could not be completed. Please try again.');
+        }
+        const supabase = getPortalClient();
+        // The shared client's initialization performs the PKCE exchange exactly once.
+        const { error } = await supabase.auth.initialize();
+        history.replaceState(null, '', '/auth/callback');
+        if (error) throw error;
+        await requirePortalSession();
+        window.location.replace('/admin');
+      }
+
+      completeSignIn().catch((error: unknown) => {
+        status.textContent = error instanceof Error ? error.message : 'Unable to complete sign-in.';
+        retry.classList.remove('hidden');
+      });
+    </script>
+  </body>
+</html>

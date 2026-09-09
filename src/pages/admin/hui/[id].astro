@@ -1,88 +1,31 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import HuiForm from '../../../components/HuiForm.astro';
-import { createClient } from '@supabase/supabase-js';
-import type { Hui } from '../../../lib/supabase';
 
 export const prerender = false;
 
 const { id } = Astro.params;
 
-const runtime = (Astro.locals as any)?.runtime?.env ?? {};
-const meta = import.meta.env as Record<string, string | undefined>;
-const SUPABASE_URL = runtime.SUPABASE_URL ?? meta.SUPABASE_URL ?? '';
-const SERVICE_KEY = runtime.SUPABASE_SERVICE_ROLE_KEY ?? meta.SUPABASE_SERVICE_ROLE_KEY ?? '';
-
-let hui: Hui | null = null;
-let loadError = '';
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-if (!id || !UUID_RE.test(id)) {
-  loadError = 'Invalid hui id.';
-} else if (!SUPABASE_URL || !SERVICE_KEY) {
-  loadError = 'Configuration error: Supabase environment variables are missing.';
-} else {
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data, error } = await supabase
-    .from('hui')
-    .select('*, documents(*)')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) {
-    loadError = error.message;
-  } else if (!data) {
-    loadError = 'Hui not found.';
-  } else {
-    hui = data as Hui;
-  }
-}
+const validId = id && UUID_RE.test(id);
+if (!validId) Astro.response.status = 404;
 ---
 
 <AdminLayout title="Edit Hui" active="edit">
-  {loadError ? (
+  {!validId ? (
     <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
-      {loadError} <a href="/admin" class="underline">Back to dashboard</a>
+      Invalid hui id. <a href="/admin" class="underline">Back to dashboard</a>
     </div>
   ) : (
-    <div id="auth-gate" class="hidden">
+    <div>
       <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="font-heading text-2xl font-semibold text-forest">Edit Hui</h1>
           <p class="mt-1 text-forest/70">Update the details for this hui.</p>
         </div>
-        <span class="rounded-full bg-cream-dark px-3 py-1 text-xs font-semibold uppercase tracking-wide text-forest/70">
-          {hui?.status}
-        </span>
       </div>
-      <HuiForm mode="edit" hui={hui} />
+      <HuiForm mode="edit" huiId={id} />
     </div>
   )}
 
-  {!loadError && <div id="auth-check" class="mt-10 text-center text-forest/60">Checking sign-in…</div>}
 </AdminLayout>
-
-<script>
-  import { createBrowserClient } from '../../../lib/supabase';
-  const env = (window as any).__PUBLIC_ENV__ ?? {};
-  const gate = document.getElementById('auth-gate');
-  const check = document.getElementById('auth-check');
-
-  if (gate && check) {
-    if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
-      check.textContent = 'Configuration error: Supabase environment variables are missing.';
-    } else {
-      const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-      supabase.auth.getSession().then(({ data }) => {
-        if (!data.session) {
-          window.location.href = '/admin/login';
-          return;
-        }
-        check.classList.add('hidden');
-        gate.classList.remove('hidden');
-      });
-    }
-  }
-</script>

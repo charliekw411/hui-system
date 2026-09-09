@@ -1,13 +1,10 @@
 ---
-export const prerender = false;
+import { getPublicEnv } from '../../lib/supabase';
 
-const runtime = (Astro.locals as any)?.runtime?.env ?? {};
-const meta = import.meta.env as Record<string, string | undefined>;
-const PUBLIC_ENV = {
-  SUPABASE_URL: runtime.SUPABASE_URL ?? meta.SUPABASE_URL ?? meta.PUBLIC_SUPABASE_URL ?? '',
-  SUPABASE_ANON_KEY: runtime.SUPABASE_ANON_KEY ?? meta.SUPABASE_ANON_KEY ?? meta.PUBLIC_SUPABASE_ANON_KEY ?? '',
-  API_BASE: runtime.PUBLIC_API_BASE ?? meta.PUBLIC_API_BASE ?? '/api',
-};
+export const prerender = false;
+const PUBLIC_ENV = getPublicEnv(Astro.locals.runtime?.env);
+Astro.response.headers.set('Cache-Control', 'no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
 ---
 
 <!doctype html>
@@ -42,7 +39,17 @@ const PUBLIC_ENV = {
 
         <div id="login-alert" class="mt-4 hidden rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></div>
 
+        {PUBLIC_ENV.GOOGLE_SIGN_IN_ENABLED && (
+          <div class="mt-6">
+            <button id="google-login" type="button" class="w-full rounded-lg border border-forest/30 bg-white px-6 py-3 font-semibold text-forest hover:bg-cream-dark disabled:opacity-60">
+              Continue with Google
+            </button>
+            <p class="mt-2 text-xs text-forest/70">Use the Google account matching your registered trustee email.</p>
+          </div>
+        )}
+
         <form id="login-form" class="mt-6 space-y-4">
+          <p class="text-sm font-semibold">Trust administrator / emergency login</p>
           <div>
             <label class="block text-sm font-semibold" for="email">Email</label>
             <input
@@ -81,47 +88,75 @@ const PUBLIC_ENV = {
     </div>
 
     <script>
-      import { createBrowserClient } from '../../lib/supabase';
+      import { getPortalClient, requirePortalSession } from '../../lib/portal-client';
 
-      const env = (window as any).__PUBLIC_ENV__ ?? {};
       const form = document.getElementById('login-form') as HTMLFormElement;
       const alertBox = document.getElementById('login-alert') as HTMLDivElement;
       const btn = document.getElementById('login-btn') as HTMLButtonElement;
+      const googleBtn = document.getElementById('google-login') as HTMLButtonElement | null;
 
       function showError(msg: string) {
         alertBox.textContent = msg;
         alertBox.classList.remove('hidden');
       }
 
-      if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
-        showError('Configuration error: Supabase environment variables are missing.');
+      function setBusy(busy: boolean) {
+        btn.disabled = busy;
+        if (googleBtn) googleBtn.disabled = busy;
       }
 
-      const supabase = createBrowserClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+      async function init() {
+        const supabase = getPortalClient();
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          alertBox.classList.add('hidden');
+          setBusy(true);
+          btn.textContent = 'Signing in…';
+          try {
+            const fields = new FormData(form);
+            const { error } = await supabase.auth.signInWithPassword({
+              email: String(fields.get('email') || '').trim(),
+              password: String(fields.get('password') || ''),
+            });
+            if (error) throw error;
+            await requirePortalSession();
+            window.location.replace('/admin');
+          } catch (error) {
+            showError(error instanceof Error ? error.message : 'Sign-in failed.');
+          } finally {
+            setBusy(false);
+            btn.textContent = 'Sign in';
+          }
+        });
 
-      // If already signed in, go straight to the dashboard.
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session) window.location.href = '/admin';
-      });
+        googleBtn?.addEventListener('click', async () => {
+          setBusy(true);
+          alertBox.classList.add('hidden');
+          try {
+            const { error } = await supabase.auth.signInWithOAuth({
+              provider: 'google',
+              options: {
+                redirectTo: new URL('/auth/callback', window.location.origin).href,
+                queryParams: { prompt: 'select_account' },
+              },
+            });
+            if (error) throw error;
+          } catch (error) {
+            showError(error instanceof Error ? error.message : 'Google sign-in could not start.');
+            setBusy(false);
+          }
+        });
 
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        alertBox.classList.add('hidden');
-        btn.disabled = true;
-        btn.textContent = 'Signing in…';
-
-        const fd = new FormData(form);
-        const email = String(fd.get('email') || '').trim();
-        const password = String(fd.get('password') || '');
-
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-          showError(error.message || 'Invalid email or password.');
-          btn.disabled = false;
-          btn.textContent = 'Sign in';
-          return;
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (data.session) {
+          await requirePortalSession();
+          window.location.replace('/admin');
         }
-        window.location.href = '/admin';
+      }
+
+      init().catch((error: unknown) => {
+        showError(error instanceof Error ? error.message : 'Unable to initialise sign-in.');
       });
     </script>
   </body>

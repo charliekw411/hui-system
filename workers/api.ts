@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { breakGlassAccess, isPortalUser, type PortalUser } from '../src/lib/auth-policy';
 
 export interface Env {
   SUPABASE_URL: string;
@@ -36,7 +37,7 @@ interface DocumentInput {
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...CORS_HEADERS },
   });
 }
 
@@ -50,8 +51,7 @@ function serviceClient(env: Env): SupabaseClient {
   });
 }
 
-// Verify the caller's Supabase access token (Bearer) using the anon client.
-async function requireAuth(request: Request, env: Env): Promise<Response | null> {
+async function requirePortalAccess(request: Request, env: Env): Promise<PortalUser | Response> {
   const header = request.headers.get('Authorization') ?? '';
   const token = header.toLowerCase().startsWith('bearer ')
     ? header.slice(7).trim()
@@ -62,7 +62,8 @@ async function requireAuth(request: Request, env: Env): Promise<Response | null>
   }
 
   const client = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
   });
 
   const { data, error: authError } = await client.auth.getUser(token);
@@ -70,7 +71,27 @@ async function requireAuth(request: Request, env: Env): Promise<Response | null>
     return error('Unauthorized: invalid or expired token', 401);
   }
 
-  return null;
+  const breakGlass = breakGlassAccess(data.user);
+  if (breakGlass) return breakGlass;
+
+  const { data: profile, error: accessError } = await client.rpc('current_portal_access');
+  if (accessError) {
+    console.error('Portal authorization lookup failed', accessError.code);
+    return error('Portal access is temporarily unavailable. Please contact the trust administrator.', 503);
+  }
+  if (profile === null) {
+    return error('Access denied. Sign in with the Google account registered for an active trustee.', 403);
+  }
+  if (!isPortalUser(profile) || profile.userId !== data.user.id || profile.isBreakGlass) {
+    console.error('Invalid portal access profile');
+    return error('Portal access configuration is invalid. Please contact the trust administrator.', 503);
+  }
+  return profile;
+}
+
+async function requireAuth(request: Request, env: Env): Promise<Response | null> {
+  const access = await requirePortalAccess(request, env);
+  return access instanceof Response ? access : null;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -220,6 +241,18 @@ async function listHui(env: Env): Promise<Response> {
   return json({ hui: data ?? [] });
 }
 
+async function getHui(id: string, env: Env): Promise<Response> {
+  if (!UUID_RE.test(id)) return error('Invalid hui id', 400);
+  const { data, error: dbError } = await serviceClient(env)
+    .from('hui')
+    .select('*, documents(*)')
+    .eq('id', id)
+    .maybeSingle();
+  if (dbError) return error('Failed to fetch hui', 500, dbError.message);
+  if (!data) return error('Hui not found', 404);
+  return json({ hui: data });
+}
+
 // POST /api/hui — create (authenticated)
 async function createHui(request: Request, env: Env): Promise<Response> {
   const body = await parseBody(request);
@@ -359,6 +392,12 @@ export default {
     const method = request.method;
 
     try {
+      if (segments[1] === 'auth' && segments[2] === 'me' && segments.length === 3) {
+        if (method !== 'GET') return error('Method not allowed', 405);
+        const access = await requirePortalAccess(request, env);
+        return access instanceof Response ? access : json({ user: access });
+      }
+
       // /api/hui/next (public)
       if (segments[1] === 'hui' && segments[2] === 'next' && segments.length === 3) {
         if (method !== 'GET') return error('Method not allowed', 405);
@@ -394,6 +433,11 @@ export default {
 
         // /api/hui/:id
         if (segments.length === 3) {
+          if (method === 'GET') {
+            const auth = await requireAuth(request, env);
+            if (auth) return auth;
+            return await getHui(id, env);
+          }
           if (method === 'PATCH') {
             const auth = await requireAuth(request, env);
             if (auth) return auth;
