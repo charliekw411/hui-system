@@ -276,7 +276,7 @@ This section is written for a non-technical trustee. You only need a web browser
 
 ### Signing in
 
-1. Go to the website and click **Trustee login** in the top-right corner of the page
+1. Go to the website and click **Trustee login** at the bottom of the page
    (or go straight to `/admin`).
 2. Choose **Continue with Google** and select the account matching your registered
    trustee email. The emergency trust administrator continues to use the existing

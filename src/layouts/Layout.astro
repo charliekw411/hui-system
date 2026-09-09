@@ -38,13 +38,7 @@ const PUBLIC_ENV = {
   </head>
   <body class="min-h-screen bg-cream font-body text-forest antialiased flex flex-col">
     <header class="bg-forest text-cream">
-      <div class="relative mx-auto max-w-4xl px-6 py-8 text-center">
-        <a
-          href="/admin"
-          class="absolute right-6 top-6 rounded-md border border-gold/70 px-3 py-2 text-sm font-medium text-cream transition-colors hover:bg-gold hover:text-forest focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2 focus:ring-offset-forest"
-        >
-          Trustee login
-        </a>
+      <div class="mx-auto max-w-4xl px-6 py-8 text-center">
         <a href="/" class="inline-block">
           <h1 class="font-heading text-3xl sm:text-4xl font-semibold tracking-wide">
             Pehiāweri B1B
@@ -65,6 +59,9 @@ const PUBLIC_ENV = {
       <div class="mx-auto max-w-4xl px-6 py-6 text-center text-sm">
         <p>&copy; {new Date().getFullYear()} Pehiāweri B1B Ahu Whenua Trust</p>
         <p class="mt-1 font-heading italic text-gold/80">oranga whenua · oranga reo</p>
+        <p class="mt-3">
+          <a href="/admin" class="underline hover:text-gold transition-colors">Trustee login</a>
+        </p>
       </div>
     </footer>
   </body>
