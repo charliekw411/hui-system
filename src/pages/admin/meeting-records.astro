@@ -1,0 +1,137 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import MeetingRecordsList from '../../components/MeetingRecordsList.astro';
+import { getMeetingRecords } from '../../lib/meeting-records';
+
+export const prerender = false;
+const records = await getMeetingRecords();
+const primaryButton = 'min-h-11 rounded-lg bg-forest px-5 py-3 font-semibold text-cream transition-colors hover:bg-forest-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest';
+const secondaryButton = 'min-h-11 rounded-lg border border-forest/25 bg-white px-5 py-3 font-semibold text-forest transition-colors hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest';
+---
+
+<AdminLayout title="Meeting Records" active="records">
+  <p id="records-loading" class="text-center text-forest/70" role="status">Loading meeting records…</p>
+  <div id="records-error" class="hidden rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-red-800" role="alert"></div>
+  <noscript><p>Please enable JavaScript to access meeting records.</p></noscript>
+
+  <div id="records-content" class="hidden">
+    <h1 class="font-heading text-3xl font-semibold text-forest">Meeting Records</h1>
+    <p class="mt-2 text-forest/70">View and manage approved meeting minutes and notes.</p>
+
+    <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+      <button type="button" data-upload-type="minutes" class={primaryButton}>Upload Meeting Minutes</button>
+      <button type="button" data-upload-type="notes" class={secondaryButton}>Upload Meeting Notes</button>
+    </div>
+
+    <p class="my-6 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-forest">
+      <strong>Demo only.</strong> These are sample records. Files are not uploaded or saved.
+    </p>
+    <MeetingRecordsList {...records} />
+  </div>
+
+  <dialog id="upload-dialog" aria-labelledby="upload-title" aria-describedby="upload-description" class="w-[calc(100%-2rem)] max-w-lg max-h-[90dvh] overflow-y-auto rounded-xl border border-cream-dark bg-white p-6 text-forest shadow-xl backdrop:bg-forest/60">
+    <h2 id="upload-title" class="font-heading text-2xl font-semibold">Upload Meeting Minutes</h2>
+    <p id="upload-description" class="mt-2 text-forest/70">Choose a file to try this demo. Nothing will be uploaded or saved.</p>
+    <form id="upload-form" class="mt-6 space-y-5">
+      <div>
+        <label for="record-file" class="mb-2 block font-medium">Select a file</label>
+        <input id="record-file" type="file" required aria-describedby="file-help"
+          class="block w-full min-w-0 rounded-lg border border-cream-dark p-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-cream file:px-3 file:py-2 file:font-semibold file:text-forest focus-visible:outline focus-visible:outline-2 focus-visible:outline-forest" />
+        <p id="file-help" class="mt-2 text-sm text-forest/70">You can choose a PDF, Word document, or another meeting file.</p>
+      </div>
+      <div class="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button type="button" id="cancel-upload" class={secondaryButton}>Cancel</button>
+        <button type="submit" class={primaryButton}>Upload (demo)</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="view-dialog" aria-labelledby="view-title" aria-describedby="view-description" class="w-[calc(100%-2rem)] max-w-lg max-h-[90dvh] overflow-y-auto rounded-xl border border-cream-dark bg-white p-6 text-forest shadow-xl backdrop:bg-forest/60">
+    <p id="view-meeting" class="mb-2 text-sm text-forest/70"></p>
+    <h2 id="view-title" class="break-words font-heading text-2xl font-semibold"></h2>
+    <div class="my-6 rounded-lg border border-dashed border-cream-dark bg-cream/40 px-5 py-10 text-center">
+      <p class="font-semibold">Document preview</p>
+      <p id="view-description" class="mt-2 text-forest/70">This is a sample record. Document viewing will be available when file storage is connected.</p>
+    </div>
+    <button type="button" id="close-view" class={primaryButton}>Close</button>
+  </dialog>
+
+  <div id="records-toast" class="fixed bottom-4 left-4 right-4 z-50 hidden items-start gap-3 rounded-xl border border-green-300 bg-green-50 p-4 text-green-900 shadow-lg sm:left-auto sm:max-w-md">
+    <p id="toast-message" role="status" aria-live="polite" aria-atomic="true" class="min-w-0 flex-1 break-words"></p>
+    <button id="dismiss-toast" type="button" aria-label="Dismiss notification" class="min-h-11 min-w-11 rounded-lg text-xl hover:bg-green-100">×</button>
+  </div>
+</AdminLayout>
+
+<script>
+  import { requirePortalSession, showPortalError } from '../../lib/portal-client';
+  import type { MeetingDocument } from '../../lib/meeting-records';
+
+  const uploadDialog = document.getElementById('upload-dialog') as HTMLDialogElement;
+  const viewDialog = document.getElementById('view-dialog') as HTMLDialogElement;
+  const uploadForm = document.getElementById('upload-form') as HTMLFormElement;
+  const fileInput = document.getElementById('record-file') as HTMLInputElement;
+  const toast = document.getElementById('records-toast')!;
+  const toastMessage = document.getElementById('toast-message')!;
+  let documentType: MeetingDocument['documentType'] = 'minutes';
+
+  function showToast(message: string) {
+    toast.classList.remove('hidden');
+    toast.classList.add('flex');
+    toastMessage.textContent = message;
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('[data-upload-type]').forEach((button) => {
+    button.addEventListener('click', () => {
+      documentType = button.dataset.uploadType === 'notes' ? 'notes' : 'minutes';
+      document.getElementById('upload-title')!.textContent =
+        documentType === 'minutes' ? 'Upload Meeting Minutes' : 'Upload Meeting Notes';
+      uploadForm.reset();
+      uploadDialog.showModal();
+    });
+  });
+
+  document.getElementById('cancel-upload')!.addEventListener('click', () => uploadDialog.close());
+  uploadDialog.addEventListener('close', () => uploadForm.reset());
+  uploadForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const file = fileInput.files?.[0];
+    if (!file || !uploadForm.reportValidity()) return;
+    // Future integration: hand the selected file and document type to a storage provider here.
+    // This demo only uses the filename; it never reads, uploads, or persists the file.
+    const fileName = file.name;
+    uploadDialog.close();
+    showToast(`Meeting ${documentType} upload simulated successfully: ${fileName}. No file was uploaded or saved.`);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-record-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const fileName = button.dataset.fileName!;
+      // Future integration: resolve the document through a storage provider for viewing/downloading.
+      if (button.dataset.recordAction === 'view') {
+        document.getElementById('view-title')!.textContent = fileName;
+        document.getElementById('view-meeting')!.textContent = button.dataset.meetingTitle!;
+        viewDialog.showModal();
+      } else {
+        showToast(`Demo only: ${fileName} is a sample file. Downloads will be available when file storage is connected.`);
+      }
+    });
+  });
+  document.getElementById('close-view')!.addEventListener('click', () => viewDialog.close());
+  document.getElementById('dismiss-toast')!.addEventListener('click', () => {
+    toast.classList.add('hidden');
+    toast.classList.remove('flex');
+    toastMessage.textContent = '';
+  });
+
+  async function load() {
+    try {
+      await requirePortalSession();
+      document.getElementById('records-content')!.classList.remove('hidden');
+    } catch (error) {
+      showPortalError(error, document.getElementById('records-error')!);
+    } finally {
+      document.getElementById('records-loading')!.classList.add('hidden');
+    }
+  }
+  load();
+</script>

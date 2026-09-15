@@ -4,7 +4,7 @@ import { getPublicEnv } from '../lib/supabase';
 
 export interface Props {
   title?: string;
-  active?: 'dashboard' | 'new' | 'edit';
+  active?: 'dashboard' | 'new' | 'edit' | 'records';
 }
 
 const { title = 'Admin', active = 'dashboard' } = Astro.props;
