@@ -1,6 +1,6 @@
 ---
 export interface Props {
-  active?: 'dashboard' | 'new' | 'edit';
+  active?: 'dashboard' | 'new' | 'edit' | 'records';
 }
 
 const { active = 'dashboard' } = Astro.props;
@@ -11,18 +11,21 @@ const idleCls = 'text-cream/80';
 ---
 
 <nav class="bg-forest text-cream">
-  <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+  <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-4">
     <a href="/admin" class="flex flex-col leading-tight">
       <span class="font-heading text-lg font-semibold">Pehiāweri B1B</span>
       <span class="text-[0.65rem] uppercase tracking-[0.25em] text-gold">Trustee Admin</span>
     </a>
-    <div class="flex items-center gap-6">
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
       <span id="portal-user" class="text-xs text-cream/80" aria-live="polite"></span>
       <a href="/admin" class={`${linkBase} ${active === 'dashboard' ? activeCls : idleCls}`}>
         Dashboard
       </a>
       <a href="/admin/hui/new" class={`${linkBase} ${active === 'new' ? activeCls : idleCls}`}>
         New Hui
+      </a>
+      <a href="/admin/meeting-records" class={`${linkBase} ${active === 'records' ? activeCls : idleCls}`} aria-current={active === 'records' ? 'page' : undefined}>
+        Meeting Records
       </a>
       <a href="/" class={`${linkBase} ${idleCls}`} target="_blank" rel="noopener">
         View site ↗

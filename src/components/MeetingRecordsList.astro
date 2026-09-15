@@ -1,0 +1,58 @@
+---
+import { formatMeetingDate, sortMeetings, type MeetingRecords } from '../lib/meeting-records';
+
+interface Props extends MeetingRecords {}
+
+const { meetings, documents } = Astro.props;
+---
+
+{meetings.length === 0 ? (
+  <div class="rounded-xl border border-cream-dark bg-white px-6 py-12 text-center">
+    <p class="text-lg text-forest">No meeting records have been uploaded yet.</p>
+  </div>
+) : (
+  <div class="space-y-5">
+    {sortMeetings(meetings).map((meeting) => (
+      <article class="overflow-hidden rounded-xl border border-cream-dark bg-white shadow-sm" aria-labelledby={`title-${meeting.id}`}>
+        <header class="border-b border-cream-dark bg-cream/40 px-5 py-5 sm:px-6">
+          <h2 id={`title-${meeting.id}`} class="font-heading text-xl font-semibold text-forest">{meeting.title}</h2>
+          <p class="mt-1 text-sm text-forest/70">
+            <time datetime={meeting.meetingDate}>{formatMeetingDate(meeting.meetingDate)}</time>
+          </p>
+        </header>
+        <ul class="divide-y divide-cream-dark">
+          {documents.filter((document) => document.meetingId === meeting.id).map((document) => (
+            <li class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-cream text-forest/70" aria-hidden="true">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M8 12h8M8 16h6" />
+                  </svg>
+                </span>
+                <div class="min-w-0">
+                  <p class="break-words font-medium">{document.fileName}</p>
+                  <p class="mt-0.5 text-sm text-forest/70">{document.documentType === 'minutes' ? 'Approved minutes' : 'Meeting notes'}</p>
+                </div>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <button type="button" data-record-action="view" data-file-name={document.fileName} data-meeting-title={meeting.title}
+                  aria-label={`View ${document.fileName} — ${meeting.title}`}
+                  class="min-h-11 flex-1 rounded-lg border border-forest/25 px-4 py-2 text-sm font-semibold hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest">
+                  View
+                </button>
+                <button type="button" data-record-action="download" data-file-name={document.fileName} data-meeting-title={meeting.title}
+                  aria-label={`Download ${document.fileName} — ${meeting.title}`}
+                  class="min-h-11 flex-1 rounded-lg border border-forest/25 px-4 py-2 text-sm font-semibold hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest">
+                  Download
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {documents.every((document) => document.meetingId !== meeting.id) && (
+          <p class="px-6 py-5 text-forest/70">No documents for this meeting yet.</p>
+        )}
+      </article>
+    ))}
+  </div>
+)}
