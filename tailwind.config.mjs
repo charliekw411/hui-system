@@ -19,7 +19,7 @@ export default {
         },
       },
       fontFamily: {
-        heading: ['"Playfair Display"', 'serif'],
+        heading: ['Inter', 'system-ui', 'sans-serif'],
         body: ['Inter', 'system-ui', 'sans-serif'],
       },
     },
