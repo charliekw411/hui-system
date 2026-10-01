@@ -1,7 +1,22 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { breakGlassAccess, isPortalUser, type PortalUser } from '../src/lib/auth-policy';
+import {
+  isMeetingDocumentType,
+  MAX_MEETING_DOCUMENT_BYTES,
+  meetingDocumentMimeType,
+  type Meeting,
+} from '../src/lib/meeting-records';
+import {
+  getMeetingDocumentContent,
+  GoogleDriveError,
+  isGoogleDriveConfigured,
+  listMeetingDocuments,
+  trashMeetingFolders,
+  uploadMeetingDocument,
+  type GoogleDriveEnv,
+} from './google-drive';
 
-export interface Env {
+export interface Env extends GoogleDriveEnv {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
@@ -206,6 +221,7 @@ async function parseBody(request: Request): Promise<HuiInput | null> {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DRIVE_FILE_ID_RE = /^[a-zA-Z0-9_-]{10,200}$/;
 
 // -----------------------------------------------------------------------------
 // Route handlers
@@ -251,6 +267,147 @@ async function getHui(id: string, env: Env): Promise<Response> {
   if (dbError) return error('Failed to fetch hui', 500, dbError.message);
   if (!data) return error('Hui not found', 404);
   return json({ hui: data });
+}
+
+function nzCalendarDate(isoDate: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Pacific/Auckland',
+  }).formatToParts(new Date(isoDate));
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+async function listMeetingRecords(env: Env): Promise<Response> {
+  const { data, error: dbError } = await serviceClient(env)
+    .from('hui')
+    .select('id,title,scheduled_at')
+    .order('scheduled_at', { ascending: false });
+  if (dbError) return error('Failed to fetch hui for meeting records', 500, dbError.message);
+
+  const meetings: Meeting[] = (data ?? []).map((hui) => ({
+    id: hui.id,
+    title: hui.title,
+    meetingDate: nzCalendarDate(hui.scheduled_at),
+  }));
+  const meetingIds = new Set(meetings.map((meeting) => meeting.id));
+  const documents = (await listMeetingDocuments(env))
+    .filter((document) => meetingIds.has(document.meetingId));
+  return json({ meetings, documents });
+}
+
+function validUploadFileName(value: string | null): value is string {
+  return Boolean(
+    value
+    && value === value.trim()
+    && value.length <= 180
+    && !/[\u0000-\u001f/\\]/.test(value),
+  );
+}
+
+async function createMeetingDocument(
+  request: Request,
+  env: Env,
+  user: PortalUser,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const meetingId = url.searchParams.get('meetingId') ?? '';
+  const documentType = url.searchParams.get('documentType');
+  const fileName = url.searchParams.get('fileName');
+  const sizeValue = url.searchParams.get('sizeBytes') ?? '';
+  const sizeBytes = Number(sizeValue);
+
+  if (!UUID_RE.test(meetingId)) return error('A valid hui is required.', 422);
+  if (!isMeetingDocumentType(documentType)) {
+    return error("documentType must be 'minutes' or 'notes'.", 422);
+  }
+  if (!validUploadFileName(fileName)) {
+    return error('The file name is invalid or too long.', 422);
+  }
+  const mimeType = meetingDocumentMimeType(fileName);
+  if (!mimeType) {
+    return error('Unsupported file type. Upload a PDF, document, text file, or image.', 415);
+  }
+  if (!/^\d+$/.test(sizeValue) || !Number.isSafeInteger(sizeBytes) || sizeBytes < 1) {
+    return error('The uploaded file is empty or has an invalid size.', 422);
+  }
+  if (sizeBytes > MAX_MEETING_DOCUMENT_BYTES) {
+    return error('Meeting documents must be no larger than 100 MB.', 413);
+  }
+  const contentLength = request.headers.get('Content-Length');
+  if (contentLength && Number(contentLength) !== sizeBytes) {
+    return error('The uploaded file size did not match the request.', 400);
+  }
+  if (!request.body) return error('The uploaded file is missing.', 400);
+
+  const { data: hui, error: dbError } = await serviceClient(env)
+    .from('hui')
+    .select('id,title,scheduled_at')
+    .eq('id', meetingId)
+    .maybeSingle();
+  if (dbError) return error('Failed to find the selected hui', 500, dbError.message);
+  if (!hui) return error('The selected hui was not found.', 404);
+
+  const document = await uploadMeetingDocument(
+    env,
+    {
+      meetingId,
+      meetingTitle: hui.title,
+      meetingDate: nzCalendarDate(hui.scheduled_at),
+      documentType,
+      fileName,
+      mimeType,
+      sizeBytes,
+      uploadedBy: user.userId,
+    },
+    request.body,
+  );
+  return json({ document }, 201);
+}
+
+function contentDisposition(fileName: string, disposition: 'inline' | 'attachment'): string {
+  const fallback = fileName
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replace(/["\\]/g, '_');
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
+async function readMeetingDocument(
+  id: string,
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!DRIVE_FILE_ID_RE.test(id)) return error('Invalid meeting document id.', 400);
+  const { document, response } = await getMeetingDocumentContent(env, id);
+  const { data: hui, error: dbError } = await serviceClient(env)
+    .from('hui')
+    .select('id')
+    .eq('id', document.meetingId)
+    .maybeSingle();
+  if (dbError || !hui) {
+    await response.body?.cancel();
+    if (dbError) return error('Failed to verify the meeting document', 500, dbError.message);
+    return error('Meeting document not found.', 404);
+  }
+  const forceDownload = new URL(request.url).searchParams.get('download') === '1';
+  const previewable = document.mimeType === 'application/pdf'
+    || document.mimeType === 'text/plain'
+    || document.mimeType.startsWith('image/');
+  const disposition = !forceDownload && previewable ? 'inline' : 'attachment';
+
+  return new Response(response.body, {
+    status: 200,
+    headers: {
+      ...CORS_HEADERS,
+      'Cache-Control': 'private, no-store',
+      'Content-Type': document.mimeType,
+      'Content-Length': String(document.sizeBytes),
+      'Content-Disposition': contentDisposition(document.fileName, disposition),
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
 }
 
 // POST /api/hui — create (authenticated)
@@ -349,7 +506,20 @@ async function deleteHui(id: string, env: Env): Promise<Response> {
   if (dbError) return error('Failed to delete hui', 500, dbError.message);
   if (!data) return error('Hui not found', 404);
 
-  return json({ success: true, id });
+  let warning: string | undefined;
+  if (isGoogleDriveConfigured(env)) {
+    try {
+      await trashMeetingFolders(env, id);
+    } catch (driveError) {
+      console.error(
+        'Deleted hui but could not trash its Google Drive meeting folder',
+        driveError instanceof GoogleDriveError ? driveError.status : 'unknown',
+      );
+      warning = 'The hui was deleted, but its Google Drive meeting folder could not be moved to the bin.';
+    }
+  }
+
+  return json({ success: true, id, ...(warning ? { warning } : {}) });
 }
 
 // POST /api/hui/:id/publish — publish (authenticated)
@@ -396,6 +566,24 @@ export default {
         if (method !== 'GET') return error('Method not allowed', 405);
         const access = await requirePortalAccess(request, env);
         return access instanceof Response ? access : json({ user: access });
+      }
+
+      // /api/meeting-records and /api/meeting-records/:id/content (authenticated)
+      if (segments[1] === 'meeting-records') {
+        const access = await requirePortalAccess(request, env);
+        if (access instanceof Response) return access;
+
+        if (segments.length === 2) {
+          if (method === 'GET') return await listMeetingRecords(env);
+          if (method === 'POST') return await createMeetingDocument(request, env, access);
+          return error('Method not allowed', 405);
+        }
+
+        if (segments.length === 4 && segments[3] === 'content') {
+          if (method !== 'GET') return error('Method not allowed', 405);
+          return await readMeetingDocument(segments[2], request, env);
+        }
+        return error('Not found', 404);
       }
 
       // /api/hui/next (public)
@@ -454,6 +642,7 @@ export default {
 
       return error('Not found', 404);
     } catch (err) {
+      if (err instanceof GoogleDriveError) return error(err.message, err.status);
       return error('Internal server error', 500, err instanceof Error ? err.message : String(err));
     }
   },

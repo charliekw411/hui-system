@@ -171,7 +171,8 @@ export const prerender = false;
         if (!confirm('Delete this hui permanently? This cannot be undone.')) return;
         const res = await apiCall(`/hui/${id}`, 'DELETE');
         if (!res.ok) throw new Error(await errMsg(res, 'Delete failed'));
-        showAlert('success', 'Hui deleted.');
+        const result = await readApiResponse<{ warning?: string }>(res);
+        showAlert(result.warning ? 'error' : 'success', result.warning ?? 'Hui deleted.');
       }
       await load();
     } catch (err) {

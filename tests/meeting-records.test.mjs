@@ -10,39 +10,42 @@ const bundle = await build({
   target: 'es2022',
   write: false,
 });
-const { getMeetingRecords, sortMeetings, formatMeetingDate } = await import(
+const {
+  formatMeetingDate,
+  isMeetingDocumentType,
+  MAX_MEETING_DOCUMENT_BYTES,
+  MEETING_DOCUMENT_ACCEPT,
+  meetingDocumentMimeType,
+  sortMeetings,
+} = await import(
   `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`
 );
 
-test('mock meetings are newest first with the requested dates and documents', async () => {
-  const { meetings, documents } = await getMeetingRecords();
-  assert.deepEqual(meetings.map(({ title, meetingDate }) => [title, formatMeetingDate(meetingDate)]), [
+test('meetings are sorted newest first without mutating the source', () => {
+  const meetings = [
+    { id: 'july', title: 'July 2026 Hui', meetingDate: '2026-07-20' },
+    { id: 'september', title: 'September 2026 Hui', meetingDate: '2026-09-15' },
+    { id: 'august', title: 'August 2026 Hui', meetingDate: '2026-08-18' },
+  ];
+  assert.deepEqual(sortMeetings(meetings).map(({ title, meetingDate }) => [title, formatMeetingDate(meetingDate)]), [
     ['September 2026 Hui', '15 September 2026'],
     ['August 2026 Hui', '18 August 2026'],
     ['July 2026 Hui', '20 July 2026'],
   ]);
-  assert.equal(new Set(documents.map(({ id }) => id)).size, 6);
-  for (const meeting of meetings) {
-    assert.deepEqual(
-      documents.filter(({ meetingId }) => meetingId === meeting.id)
-        .map(({ documentType, fileName, fileUrl }) => [documentType, fileName, fileUrl]),
-      [['minutes', 'Approved Minutes.pdf', ''], ['notes', 'Meeting Notes.pdf', '']],
-    );
-  }
-});
-
-test('sorting handles empty records and does not mutate its input', () => {
   assert.deepEqual(sortMeetings([]), []);
-  const input = [{ meetingDate: '2026-07-20' }, { meetingDate: '2026-09-15' }];
-  assert.equal(sortMeetings(input)[0].meetingDate, '2026-09-15');
-  assert.equal(input[0].meetingDate, '2026-07-20');
+  assert.equal(meetings[0].id, 'july');
 });
 
-test('mock records are isolated between requests', async () => {
-  const first = await getMeetingRecords();
-  first.meetings[0].title = 'Changed';
-  first.documents[0].fileName = 'Changed';
-  const second = await getMeetingRecords();
-  assert.equal(second.meetings[0].title, 'September 2026 Hui');
-  assert.equal(second.documents[0].fileName, 'Approved Minutes.pdf');
+test('meeting document types and supported file extensions are explicit', () => {
+  assert.equal(isMeetingDocumentType('minutes'), true);
+  assert.equal(isMeetingDocumentType('notes'), true);
+  assert.equal(isMeetingDocumentType('agenda'), false);
+  assert.equal(meetingDocumentMimeType('Approved Minutes.PDF'), 'application/pdf');
+  assert.equal(
+    meetingDocumentMimeType('Meeting notes.docx'),
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  );
+  assert.equal(meetingDocumentMimeType('unsafe.html'), null);
+  assert.match(MEETING_DOCUMENT_ACCEPT, /\.pdf/);
+  assert.equal(MAX_MEETING_DOCUMENT_BYTES, 100_000_000);
 });

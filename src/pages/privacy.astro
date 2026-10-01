@@ -1,0 +1,110 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Privacy Policy | Pehiāweri B1B Ahu Whenua Trust"
+  description="Privacy policy for the Pehiāweri B1B Hui System."
+>
+  <article class="mx-auto max-w-3xl rounded-2xl border border-cream-dark bg-white px-6 py-8 shadow-sm sm:px-10">
+    <h1 class="font-heading text-3xl font-semibold text-forest">Privacy Policy</h1>
+    <p class="mt-2 text-sm text-forest/70">Effective 1 October 2026</p>
+
+    <div class="mt-8 space-y-8 leading-relaxed text-forest/90">
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">Who we are</h2>
+        <p class="mt-2">
+          The Hui System is operated by Pehiāweri B1B Ahu Whenua Trust to manage hui information
+          and meeting documents for the trust.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">Information we process</h2>
+        <p class="mt-2">The system may process:</p>
+        <ul class="mt-3 list-disc space-y-2 pl-6">
+          <li>A trustee’s name, email address, and sign-in identifier for authentication and access control.</li>
+          <li>Hui details entered by authorized trustees, including dates, locations, descriptions, and links.</li>
+          <li>Meeting documents uploaded by authorized trustees, including file names, file content, type, size, and upload metadata.</li>
+          <li>Limited technical and security logs needed to operate, troubleshoot, and protect the service.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">How we use Google data</h2>
+        <p class="mt-2">
+          The system uses the Google Drive <code>drive.file</code> permission to create and manage
+          only the Drive files and folders created for this application. It does not request access
+          to every file in the connected Google Drive account.
+        </p>
+        <p class="mt-3">
+          Google account and Drive data is used only to authenticate approved trustees and provide
+          the meeting-document features requested by the trust. It is not used for advertising or
+          sold to third parties.
+        </p>
+        <p class="mt-3">
+          The use and transfer of information received from Google APIs complies with the
+          <a
+            class="underline hover:text-gold-dark"
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+          >Google API Services User Data Policy</a>, including its Limited Use requirements.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">Storage and sharing</h2>
+        <p class="mt-2">
+          Private meeting minutes and notes are stored in the trust’s connected Google Drive and
+          are delivered through authenticated application routes. Trustee identity and hui data is
+          processed using Supabase, and the application is hosted through Cloudflare. These
+          providers process information only to supply their respective services.
+        </p>
+        <p class="mt-3">
+          Information is shared outside the trust only when required by law, necessary to protect
+          the service or its users, or directed by an authorized trust representative.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">Retention and deletion</h2>
+        <p class="mt-2">
+          Information is retained while needed for trust administration, record keeping, security,
+          or legal obligations. Authorized trustees can remove hui records through the portal.
+          Drive access can be revoked from the connected Google Account’s third-party connections
+          page. Revoking access stops future application access but does not automatically delete
+          files already stored in Drive.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">Security</h2>
+        <p class="mt-2">
+          Administrative features require an approved trustee account. Google Drive credentials
+          are kept on the server and are not exposed to trustees’ browsers. No internet service can
+          guarantee absolute security, but reasonable controls are used to restrict access and
+          protect stored information.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">Contact</h2>
+        <p class="mt-2">
+          For privacy questions, access requests, or deletion requests, contact
+          <a class="underline hover:text-gold-dark" href="mailto:pehiawerib1b@gmail.com">
+            pehiawerib1b@gmail.com
+          </a>.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-heading text-xl font-semibold text-forest">Changes to this policy</h2>
+        <p class="mt-2">
+          This policy may be updated when the service or its legal obligations change. The effective
+          date above will be updated when material changes are published.
+        </p>
+      </section>
+    </div>
+  </article>
+</Layout>
