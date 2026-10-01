@@ -25,8 +25,8 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 
 ## What it does
 
-- **Public site (`/`)** — shows the next upcoming published hui (title, date, time, location, _Join Zoom_ button, passcode, agenda download, attached documents) and an archive of previous hui. No login required.
-- **Admin portal (`/admin`)** — Google Sign-In for active, allowlisted trustees, plus the unchanged trust administrator's emergency email/password login. Every approved trustee can create, edit, publish, cancel, and delete hui, upload public hui attachments, and manage private minutes and notes in **Meeting Records**. Dashboard lists every hui with its status (draft / published / cancelled).
+- **Public site (`/`)** — shows the next upcoming published hui (title, date, time, location, _Join Zoom_ button, passcode, agenda download, attached documents) and an archive of previous hui details. Meeting records and documents for past hui require trustee sign-in.
+- **Admin portal (`/admin`)** — Google Sign-In for active, allowlisted trustees, plus the unchanged trust administrator's emergency email/password login. Every approved trustee can create, edit, publish, cancel, and delete hui and upload documents. Dashboard lists every hui with its status (draft / published / cancelled).
 - **Zoom** — manual only. Trustees paste their own Zoom link and passcode into the form. There is no Zoom API or OAuth.
 
 ## Tech stack
@@ -408,8 +408,8 @@ This section is written for a non-technical trustee. You only need a web browser
   the hui on the dashboard.
 - Only the **next upcoming published** hui appears at the top of the public page.
   Once its scheduled start time passes, a published hui moves to the **Previous Hui**
-  archive. Its **Join Zoom** button and passcode remain available there so whānau
-  can still join after the hui has started.
+  archive. Past meeting records and documents are available to signed-in trustees
+  through **Meeting Records**.
 
 ### Editing or cancelling a hui
 
