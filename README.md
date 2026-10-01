@@ -12,14 +12,15 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 
 1. [What it does](#what-it-does)
 2. [Tech stack](#tech-stack)
-3. [Local development setup](#1-local-development-setup)
-4. [Supabase project setup & running the migration](#2-supabase-project-setup--running-the-migration)
-5. [Cloudflare Pages + Workers deployment](#3-cloudflare-pages--workers-deployment)
-6. [Environment variables](#4-environment-variables)
-7. [Google Drive meeting-records setup](#5-google-drive-meeting-records-setup)
-8. [Preserving the trust administrator and adding trustees](#6-preserving-the-trust-administrator-and-adding-trustees)
-9. [For Trustees: How to create a Hui](#7-for-trustees-how-to-create-a-hui)
-10. [Trustee authentication migration](#8-trustee-authentication-migration)
+3. [How the platforms work together](#how-the-platforms-work-together)
+4. [Local development setup](#1-local-development-setup)
+5. [Supabase project setup & running the migration](#2-supabase-project-setup--running-the-migration)
+6. [Cloudflare Pages + Workers deployment](#3-cloudflare-pages--workers-deployment)
+7. [Environment variables](#4-environment-variables)
+8. [Google Drive meeting-records setup](#5-google-drive-meeting-records-setup)
+9. [Preserving the trust administrator and adding trustees](#6-preserving-the-trust-administrator-and-adding-trustees)
+10. [For Trustees: How to create a Hui](#7-for-trustees-how-to-create-a-hui)
+11. [Trustee authentication migration](#8-trustee-authentication-migration)
 
 ---
 
@@ -39,6 +40,25 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 | Auth     | Supabase Auth (Google trustees + permanent password break-glass account) |
 | Storage  | Supabase Storage (public hui attachments) + private Google Drive (meeting records) |
 | Hosting  | Cloudflare Pages + Workers                   |
+
+## How the platforms work together
+
+| Platform | Responsibility |
+| -------- | -------------- |
+| GitHub | Stores the source. Merging to `main` triggers the separate Cloudflare Pages and Worker builds; GitHub Pages is not used. |
+| Cloudflare Pages | Hosts the Astro public site, trustee portal, and OAuth privacy policy. It contains no Google Drive credentials. |
+| Cloudflare Worker (`hui-system-api`) | Provides the authenticated API, validates every trustee request, and proxies private Drive uploads and downloads. Google OAuth credentials are encrypted Worker secrets. |
+| Supabase | Handles trustee sign-in and authorization, stores hui/trustee data, and stores public hui attachments. |
+| Google Cloud OAuth | Lets the dedicated `pehiawerib1b@gmail.com` account authorize the Worker once with the limited `drive.file` scope. Trustees do not authorize Drive individually. |
+| Google Drive | Owns the private minutes and notes in app-created meeting folders. No public Drive links are issued. |
+
+The main meeting-record flow is:
+
+1. A trustee signs in through the Pages-hosted portal; Supabase issues the browser session.
+2. The portal sends the selected hui, file, and Supabase bearer token to the Worker.
+3. The Worker confirms the user is an active trustee, exchanges the stored Google refresh token for a short-lived access token, and streams the file to Drive.
+4. Drive metadata links the file to the existing Supabase hui, while the file bytes remain owned by the dedicated trust account.
+5. Listing, previewing, and downloading follow the same authenticated path back through the Worker, so Drive credentials and private file URLs never reach the browser.
 
 ### Project structure
 
