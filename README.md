@@ -16,16 +16,17 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 4. [Supabase project setup & running the migration](#2-supabase-project-setup--running-the-migration)
 5. [Cloudflare Pages + Workers deployment](#3-cloudflare-pages--workers-deployment)
 6. [Environment variables](#4-environment-variables)
-7. [Preserving the trust administrator and adding trustees](#5-preserving-the-trust-administrator-and-adding-trustees)
-8. [For Trustees: How to create a Hui](#6-for-trustees-how-to-create-a-hui)
-9. [Trustee authentication migration](#7-trustee-authentication-migration)
+7. [Google Drive meeting-records setup](#5-google-drive-meeting-records-setup)
+8. [Preserving the trust administrator and adding trustees](#6-preserving-the-trust-administrator-and-adding-trustees)
+9. [For Trustees: How to create a Hui](#7-for-trustees-how-to-create-a-hui)
+10. [Trustee authentication migration](#8-trustee-authentication-migration)
 
 ---
 
 ## What it does
 
 - **Public site (`/`)** — shows the next upcoming published hui (title, date, time, location, _Join Zoom_ button, passcode, agenda download, attached documents) and an archive of previous hui. No login required.
-- **Admin portal (`/admin`)** — Google Sign-In for active, allowlisted trustees, plus the unchanged trust administrator's emergency email/password login. Every approved trustee can create, edit, publish, cancel, and delete hui and upload documents. Dashboard lists every hui with its status (draft / published / cancelled).
+- **Admin portal (`/admin`)** — Google Sign-In for active, allowlisted trustees, plus the unchanged trust administrator's emergency email/password login. Every approved trustee can create, edit, publish, cancel, and delete hui, upload public hui attachments, and manage private minutes and notes in **Meeting Records**. Dashboard lists every hui with its status (draft / published / cancelled).
 - **Zoom** — manual only. Trustees paste their own Zoom link and passcode into the form. There is no Zoom API or OAuth.
 
 ## Tech stack
@@ -36,7 +37,7 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 | Backend  | Cloudflare Workers + TypeScript              |
 | Database | Supabase PostgreSQL                          |
 | Auth     | Supabase Auth (Google trustees + permanent password break-glass account) |
-| Storage  | Supabase Storage (agendas & documents)       |
+| Storage  | Supabase Storage (public hui attachments) + private Google Drive (meeting records) |
 | Hosting  | Cloudflare Pages + Workers                   |
 
 ### Project structure
@@ -49,6 +50,7 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 │   │   └── admin/
 │   │       ├── index.astro        ← dashboard
 │   │       ├── login.astro        ← login page
+│   │       ├── meeting-records.astro ← private Drive minutes and notes
 │   │       └── hui/
 │   │           ├── new.astro      ← create hui form
 │   │           └── [id].astro     ← edit hui form
@@ -60,9 +62,13 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 │   │   ├── Layout.astro
 │   │   └── AdminLayout.astro
 │   └── lib/
+│       ├── meeting-records.ts
 │       └── supabase.ts
 ├── workers/
-│   └── api.ts                     ← Cloudflare Worker (API)
+│   ├── api.ts                     ← Cloudflare Worker (API)
+│   └── google-drive.ts            ← private Drive storage provider
+├── scripts/
+│   └── google-drive-authorize.mjs ← one-time OAuth bootstrap
 ├── migrations/
 │   └── 001_initial.sql
 ├── astro.config.mjs
@@ -116,6 +122,7 @@ unset.
 | `npm run preview`       | Preview the production build        |
 | `npm run check`         | Type-check the Astro project        |
 | `npm test`              | Run isolated Worker authorization regressions |
+| `npm run drive:authorize` | Authorize the dedicated Drive account and issue its refresh token |
 | `npm run worker:dev`    | Run the API Worker locally          |
 | `npm run worker:deploy` | Deploy the API Worker to Cloudflare |
 
@@ -193,6 +200,9 @@ npx wrangler login
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_ANON_KEY
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put GOOGLE_DRIVE_CLIENT_ID
+npx wrangler secret put GOOGLE_DRIVE_CLIENT_SECRET
+npx wrangler secret put GOOGLE_DRIVE_REFRESH_TOKEN
 
 # Deploy
 npm run worker:deploy
@@ -238,6 +248,9 @@ zone_name = "yourdomain.com"
 | `SUPABASE_URL`              | Site (SSR) + Worker     | No      | Your Supabase project URL                             |
 | `SUPABASE_ANON_KEY`         | Site (browser) + Worker | No      | Public anon key (auth, public reads, Storage uploads) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Worker; existing Pages secret retained | **Yes** | Service role key — never exposed to the browser |
+| `GOOGLE_DRIVE_CLIENT_ID` | Worker | No | OAuth Desktop client ID used for private meeting-record storage |
+| `GOOGLE_DRIVE_CLIENT_SECRET` | Worker | **Yes** | OAuth client secret; never expose it to the browser |
+| `GOOGLE_DRIVE_REFRESH_TOKEN` | Worker | **Yes** | Offline Drive authorization for `pehiawerib1b@gmail.com` |
 | `PUBLIC_API_BASE`           | Site (browser)          | No      | Optional. API base URL. Defaults to `/api`            |
 | `PUBLIC_GOOGLE_SIGN_IN_ENABLED` | Pages | No | Defaults to `false`; enable only after SQL, API and provider configuration are ready |
 
@@ -247,7 +260,97 @@ commit real secrets — `.env`, `.env.*`, and `.dev.vars` are git-ignored.
 
 ---
 
-## 5. Preserving the trust administrator and adding trustees
+## 5. Google Drive meeting-records setup
+
+Meeting minutes and notes are private Drive files. Existing rows in the `hui`
+table remain the meeting catalogue; no second meeting table or SQL migration is
+required. The Worker stores the relationship to a hui in private Drive
+`appProperties`, and the browser can access file bytes only through an
+authenticated Worker route. The app never creates a public Drive sharing link.
+
+The integration requests only the `drive.file` OAuth scope. That scope lets this
+app manage files and folders it creates, rather than granting access to every
+file already in the account.
+
+### A. Create the Drive OAuth client
+
+1. Sign in to [Google Cloud Console](https://console.cloud.google.com/) with
+   `pehiawerib1b@gmail.com` and create or select a project for this site.
+2. Open **APIs & Services → Library**, find **Google Drive API**, and enable it.
+3. Configure the **OAuth consent screen**:
+   - Choose **External** for a normal Gmail account.
+   - Add `pehiawerib1b@gmail.com` as a test user while configuring the app.
+   - Use `https://hui-system.pages.dev/` as the application home page and
+     `https://hui-system.pages.dev/privacy` as the privacy policy after the
+     updated frontend has been deployed.
+   - Move the app to **Production** before relying on it. Refresh tokens for an
+     External app left in Testing can expire after seven days.
+4. Open **APIs & Services → Credentials → Create credentials → OAuth client
+   ID**, choose **Desktop app**, and copy the client ID and client secret.
+
+Create a separate OAuth client for Drive storage. Do not reuse or change the
+Supabase Google Sign-In client.
+
+### B. Authorize the dedicated Drive account
+
+In PowerShell, set the new Desktop client credentials for the current terminal
+and run the repository's authorization helper:
+
+```powershell
+$env:GOOGLE_DRIVE_CLIENT_ID='your-client-id.apps.googleusercontent.com'
+$env:GOOGLE_DRIVE_CLIENT_SECRET='your-client-secret'
+npm run drive:authorize
+```
+
+Open the printed Google URL, explicitly choose `pehiawerib1b@gmail.com`, and
+approve Drive access. The command receives the loopback redirect and prints a
+refresh token. Treat that token like a password: do not paste it into source
+files, screenshots, issues, or chat.
+
+For local Worker development, put all three values in `.dev.vars`:
+
+```dotenv
+GOOGLE_DRIVE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_DRIVE_CLIENT_SECRET=your-client-secret
+GOOGLE_DRIVE_REFRESH_TOKEN=your-refresh-token
+```
+
+For the deployed Worker, enter each value when prompted:
+
+```powershell
+npx wrangler secret put GOOGLE_DRIVE_CLIENT_ID
+npx wrangler secret put GOOGLE_DRIVE_CLIENT_SECRET
+npx wrangler secret put GOOGLE_DRIVE_REFRESH_TOKEN
+npm run worker:deploy
+```
+
+Do not add these Drive values to Cloudflare Pages. They are Worker-only secrets.
+
+### C. Verify the connection
+
+1. Run the Astro site and Worker as described in local setup, then sign in as an
+   authorized trustee.
+2. Open **Meeting Records**.
+3. Select **Upload Meeting Minutes** or **Upload Meeting Notes**, choose an
+   existing dashboard hui, and upload a supported file of at most 100 MB.
+4. Confirm the file appears under that hui and that **View**/**Download** work.
+5. In Google Drive, confirm the app created:
+
+```text
+Pehiāweri B1B Meeting Records/
+└── YYYY-MM-DD - Hui title/
+    └── uploaded file
+```
+
+Supported uploads are PDF, DOC/DOCX, ODT, RTF, plain text, JPG, and PNG. PDF,
+text, and images preview in the portal; other formats download for local
+viewing. Deleting a hui also moves its app-created meeting-record folder to the
+Drive bin. If Drive cleanup fails, the dashboard reports that partial outcome
+instead of silently claiming full success.
+
+---
+
+## 6. Preserving the trust administrator and adding trustees
 
 Never recreate, rename, disable, delete, reset, or change the existing
 `trust@pehiaweri.local` account as part of this migration. Its immutable Supabase
@@ -270,7 +373,7 @@ email. Do not automatically equate different email addresses or Google aliases.
 
 ---
 
-## 6. For Trustees: How to create a Hui
+## 7. For Trustees: How to create a Hui
 
 This section is written for a non-technical trustee. You only need a web browser.
 
@@ -321,7 +424,7 @@ This section is written for a non-technical trustee. You only need a web browser
 That's it — no calendar invites, no email chains, no Zoom admin. Paste your Zoom
 link, upload the agenda, and publish.
 
-## 7. Trustee authentication migration
+## 8. Trustee authentication migration
 
 ### Architecture before this change
 

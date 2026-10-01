@@ -1,12 +1,10 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import MeetingRecordsList from '../../components/MeetingRecordsList.astro';
-import { getMeetingRecords } from '../../lib/meeting-records';
+import { MEETING_DOCUMENT_ACCEPT } from '../../lib/meeting-records';
 
 export const prerender = false;
-const records = await getMeetingRecords();
-const primaryButton = 'min-h-11 rounded-lg bg-forest px-5 py-3 font-semibold text-cream transition-colors hover:bg-forest-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest';
-const secondaryButton = 'min-h-11 rounded-lg border border-forest/25 bg-white px-5 py-3 font-semibold text-forest transition-colors hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest';
+const primaryButton = 'min-h-11 rounded-lg bg-forest px-5 py-3 font-semibold text-cream transition-colors hover:bg-forest-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:cursor-not-allowed disabled:opacity-60';
+const secondaryButton = 'min-h-11 rounded-lg border border-forest/25 bg-white px-5 py-3 font-semibold text-forest transition-colors hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:cursor-not-allowed disabled:opacity-60';
 ---
 
 <AdminLayout title="Meeting Records" active="records">
@@ -24,60 +22,214 @@ const secondaryButton = 'min-h-11 rounded-lg border border-forest/25 bg-white px
     </div>
 
     <p class="my-6 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-forest">
-      <strong>Demo only.</strong> These are sample records. Files are not uploaded or saved.
+      Documents are stored privately in the trust’s Google Drive and are available only to signed-in trustees.
     </p>
-    <MeetingRecordsList {...records} />
+    <div id="records-list"></div>
   </div>
 
   <dialog id="upload-dialog" aria-labelledby="upload-title" aria-describedby="upload-description" class="w-[calc(100%-2rem)] max-w-lg max-h-[90dvh] overflow-y-auto rounded-xl border border-cream-dark bg-white p-6 text-forest shadow-xl backdrop:bg-forest/60">
     <h2 id="upload-title" class="font-heading text-2xl font-semibold">Upload Meeting Minutes</h2>
-    <p id="upload-description" class="mt-2 text-forest/70">Choose a file to try this demo. Nothing will be uploaded or saved.</p>
+    <p id="upload-description" class="mt-2 text-forest/70">Choose the hui and the file to store in Google Drive.</p>
+    <div id="upload-error" class="mt-4 hidden rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></div>
     <form id="upload-form" class="mt-6 space-y-5">
       <div>
-        <label for="record-file" class="mb-2 block font-medium">Select a file</label>
-        <input id="record-file" type="file" required aria-describedby="file-help"
-          class="block w-full min-w-0 rounded-lg border border-cream-dark p-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-cream file:px-3 file:py-2 file:font-semibold file:text-forest focus-visible:outline focus-visible:outline-2 focus-visible:outline-forest" />
-        <p id="file-help" class="mt-2 text-sm text-forest/70">You can choose a PDF, Word document, or another meeting file.</p>
+        <label for="record-meeting" class="mb-2 block font-medium">Hui</label>
+        <select id="record-meeting" name="meetingId" required
+          class="block min-h-11 w-full rounded-lg border border-cream-dark bg-white px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-forest">
+        </select>
       </div>
+      <div>
+        <label for="record-file" class="mb-2 block font-medium">Select a file</label>
+        <input id="record-file" type="file" required accept={MEETING_DOCUMENT_ACCEPT} aria-describedby="file-help"
+          class="block w-full min-w-0 rounded-lg border border-cream-dark p-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-cream file:px-3 file:py-2 file:font-semibold file:text-forest focus-visible:outline focus-visible:outline-2 focus-visible:outline-forest" />
+        <p id="file-help" class="mt-2 text-sm text-forest/70">PDF, Word, OpenDocument, RTF, text, JPG, or PNG; maximum 100 MB.</p>
+      </div>
+      <p id="upload-progress" class="hidden text-sm font-medium text-forest" role="status" aria-live="polite"></p>
       <div class="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <button type="button" id="cancel-upload" class={secondaryButton}>Cancel</button>
-        <button type="submit" class={primaryButton}>Upload (demo)</button>
+        <button type="submit" id="submit-upload" class={primaryButton}>Upload</button>
       </div>
     </form>
   </dialog>
 
-  <dialog id="view-dialog" aria-labelledby="view-title" aria-describedby="view-description" class="w-[calc(100%-2rem)] max-w-lg max-h-[90dvh] overflow-y-auto rounded-xl border border-cream-dark bg-white p-6 text-forest shadow-xl backdrop:bg-forest/60">
-    <p id="view-meeting" class="mb-2 text-sm text-forest/70"></p>
-    <h2 id="view-title" class="break-words font-heading text-2xl font-semibold"></h2>
-    <div class="my-6 rounded-lg border border-dashed border-cream-dark bg-cream/40 px-5 py-10 text-center">
-      <p class="font-semibold">Document preview</p>
-      <p id="view-description" class="mt-2 text-forest/70">This is a sample record. Document viewing will be available when file storage is connected.</p>
+  <dialog id="view-dialog" aria-labelledby="view-title" aria-describedby="view-description" class="h-[min(90dvh,60rem)] w-[calc(100%-2rem)] max-w-5xl overflow-hidden rounded-xl border border-cream-dark bg-white p-0 text-forest shadow-xl backdrop:bg-forest/60">
+    <div class="flex h-full flex-col">
+      <header class="border-b border-cream-dark px-5 py-4 sm:px-6">
+        <p id="view-meeting" class="mb-1 text-sm text-forest/70"></p>
+        <h2 id="view-title" class="break-words font-heading text-2xl font-semibold"></h2>
+      </header>
+      <div class="min-h-0 flex-1 bg-cream/40 p-4">
+        <p id="view-description" class="text-center text-forest/70">Loading document preview…</p>
+        <iframe id="document-preview" class="hidden h-full w-full rounded-lg border border-cream-dark bg-white" title="Meeting document preview"></iframe>
+      </div>
+      <footer class="border-t border-cream-dark px-5 py-4 text-right sm:px-6">
+        <button type="button" id="close-view" class={primaryButton}>Close</button>
+      </footer>
     </div>
-    <button type="button" id="close-view" class={primaryButton}>Close</button>
   </dialog>
 
-  <div id="records-toast" class="fixed bottom-4 left-4 right-4 z-50 hidden items-start gap-3 rounded-xl border border-green-300 bg-green-50 p-4 text-green-900 shadow-lg sm:left-auto sm:max-w-md">
+  <div id="records-toast" class="fixed bottom-4 left-4 right-4 z-50 hidden items-start gap-3 rounded-xl border p-4 shadow-lg sm:left-auto sm:max-w-md">
     <p id="toast-message" role="status" aria-live="polite" aria-atomic="true" class="min-w-0 flex-1 break-words"></p>
-    <button id="dismiss-toast" type="button" aria-label="Dismiss notification" class="min-h-11 min-w-11 rounded-lg text-xl hover:bg-green-100">×</button>
+    <button id="dismiss-toast" type="button" aria-label="Dismiss notification" class="min-h-11 min-w-11 rounded-lg text-xl hover:bg-black/5">×</button>
   </div>
 </AdminLayout>
 
 <script>
-  import { requirePortalSession, showPortalError } from '../../lib/portal-client';
-  import type { MeetingDocument } from '../../lib/meeting-records';
+  import {
+    formatMeetingDate,
+    MAX_MEETING_DOCUMENT_BYTES,
+    meetingDocumentMimeType,
+    sortMeetings,
+    type MeetingDocument,
+    type MeetingDocumentType,
+    type MeetingRecords,
+  } from '../../lib/meeting-records';
+  import {
+    portalFetch,
+    readApiResponse,
+    requirePortalSession,
+    showPortalError,
+  } from '../../lib/portal-client';
 
+  const loading = document.getElementById('records-loading')!;
+  const content = document.getElementById('records-content')!;
+  const recordsError = document.getElementById('records-error')!;
+  const recordsList = document.getElementById('records-list')!;
   const uploadDialog = document.getElementById('upload-dialog') as HTMLDialogElement;
   const viewDialog = document.getElementById('view-dialog') as HTMLDialogElement;
   const uploadForm = document.getElementById('upload-form') as HTMLFormElement;
+  const meetingSelect = document.getElementById('record-meeting')!;
   const fileInput = document.getElementById('record-file') as HTMLInputElement;
+  const uploadError = document.getElementById('upload-error')!;
+  const uploadProgress = document.getElementById('upload-progress')!;
+  const uploadButton = document.getElementById('submit-upload') as HTMLButtonElement;
   const toast = document.getElementById('records-toast')!;
   const toastMessage = document.getElementById('toast-message')!;
-  let documentType: MeetingDocument['documentType'] = 'minutes';
+  const preview = document.getElementById('document-preview') as HTMLIFrameElement;
+  const viewDescription = document.getElementById('view-description')!;
 
-  function showToast(message: string) {
-    toast.classList.remove('hidden');
-    toast.classList.add('flex');
+  let records: MeetingRecords = { meetings: [], documents: [] };
+  let documentsById = new Map<string, MeetingDocument>();
+  let documentType: MeetingDocumentType = 'minutes';
+  let previewUrl: string | null = null;
+  let previewRequest = 0;
+
+  function escapeHtml(value: string): string {
+    return value.replace(
+      /[&<>"']/g,
+      (character) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character]!,
+    );
+  }
+
+  function formatFileSize(sizeBytes: number): string {
+    if (sizeBytes < 1000) return `${sizeBytes} B`;
+    if (sizeBytes < 1_000_000) return `${(sizeBytes / 1000).toFixed(1)} KB`;
+    return `${(sizeBytes / 1_000_000).toFixed(1)} MB`;
+  }
+
+  function showToast(message: string, kind: 'success' | 'error' = 'success') {
+    toast.className =
+      'fixed bottom-4 left-4 right-4 z-50 flex items-start gap-3 rounded-xl border p-4 shadow-lg sm:left-auto sm:max-w-md ' +
+      (kind === 'success'
+        ? 'border-green-300 bg-green-50 text-green-900'
+        : 'border-red-300 bg-red-50 text-red-900');
     toastMessage.textContent = message;
+  }
+
+  function renderRecords() {
+    const meetings = sortMeetings(records.meetings);
+    documentsById = new Map(records.documents.map((document) => [document.id, document]));
+    meetingSelect.innerHTML = meetings
+      .map((meeting) => (
+        `<option value="${escapeHtml(meeting.id)}">${escapeHtml(meeting.title)} — ${escapeHtml(formatMeetingDate(meeting.meetingDate))}</option>`
+      ))
+      .join('');
+
+    document.querySelectorAll<HTMLButtonElement>('[data-upload-type]').forEach((button) => {
+      button.disabled = meetings.length === 0;
+    });
+
+    if (meetings.length === 0) {
+      recordsList.innerHTML = `
+        <div class="rounded-xl border border-cream-dark bg-white px-6 py-12 text-center">
+          <p class="text-lg text-forest">Create a hui from the dashboard before uploading meeting records.</p>
+        </div>`;
+      return;
+    }
+
+    recordsList.innerHTML = `<div class="space-y-5">${meetings.map((meeting) => {
+      const meetingDocuments = records.documents
+        .filter((document) => document.meetingId === meeting.id)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const documentRows = meetingDocuments.map((document) => `
+        <li class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div class="flex min-w-0 items-center gap-3">
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-cream text-forest/70" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M8 12h8M8 16h6"></path>
+              </svg>
+            </span>
+            <div class="min-w-0">
+              <p class="break-words font-medium">${escapeHtml(document.fileName)}</p>
+              <p class="mt-0.5 text-sm text-forest/70">
+                ${document.documentType === 'minutes' ? 'Approved minutes' : 'Meeting notes'} · ${formatFileSize(document.sizeBytes)}
+              </p>
+            </div>
+          </div>
+          <div class="flex shrink-0 gap-2">
+            <button type="button" data-record-action="view" data-record-id="${escapeHtml(document.id)}"
+              aria-label="View ${escapeHtml(document.fileName)} — ${escapeHtml(meeting.title)}"
+              class="min-h-11 flex-1 rounded-lg border border-forest/25 px-4 py-2 text-sm font-semibold hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:opacity-60">
+              View
+            </button>
+            <button type="button" data-record-action="download" data-record-id="${escapeHtml(document.id)}"
+              aria-label="Download ${escapeHtml(document.fileName)} — ${escapeHtml(meeting.title)}"
+              class="min-h-11 flex-1 rounded-lg border border-forest/25 px-4 py-2 text-sm font-semibold hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:opacity-60">
+              Download
+            </button>
+          </div>
+        </li>`).join('');
+
+      return `
+        <article class="overflow-hidden rounded-xl border border-cream-dark bg-white shadow-sm" aria-labelledby="title-${escapeHtml(meeting.id)}">
+          <header class="border-b border-cream-dark bg-cream/40 px-5 py-5 sm:px-6">
+            <h2 id="title-${escapeHtml(meeting.id)}" class="font-heading text-xl font-semibold text-forest">${escapeHtml(meeting.title)}</h2>
+            <p class="mt-1 text-sm text-forest/70">
+              <time datetime="${escapeHtml(meeting.meetingDate)}">${escapeHtml(formatMeetingDate(meeting.meetingDate))}</time>
+            </p>
+          </header>
+          ${documentRows
+            ? `<ul class="divide-y divide-cream-dark">${documentRows}</ul>`
+            : '<p class="px-6 py-5 text-forest/70">No documents for this meeting yet.</p>'}
+        </article>`;
+    }).join('')}</div>`;
+
+    recordsList.querySelectorAll<HTMLButtonElement>('[data-record-action]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const document = documentsById.get(button.dataset.recordId ?? '');
+        if (!document) {
+          showToast('This document is no longer available. Refresh the page and try again.', 'error');
+          return;
+        }
+        const meeting = records.meetings.find((item) => item.id === document.meetingId);
+        if (button.dataset.recordAction === 'view') {
+          void viewDocument(document, meeting?.title ?? 'Hui');
+        } else {
+          void downloadDocument(document, button);
+        }
+      });
+    });
+  }
+
+  async function loadRecords() {
+    records = await readApiResponse<MeetingRecords>(await portalFetch('/meeting-records'));
+    renderRecords();
   }
 
   document.querySelectorAll<HTMLButtonElement>('[data-upload-type]').forEach((button) => {
@@ -86,52 +238,152 @@ const secondaryButton = 'min-h-11 rounded-lg border border-forest/25 bg-white px
       document.getElementById('upload-title')!.textContent =
         documentType === 'minutes' ? 'Upload Meeting Minutes' : 'Upload Meeting Notes';
       uploadForm.reset();
+      uploadError.classList.add('hidden');
+      uploadProgress.classList.add('hidden');
       uploadDialog.showModal();
     });
   });
 
   document.getElementById('cancel-upload')!.addEventListener('click', () => uploadDialog.close());
-  uploadDialog.addEventListener('close', () => uploadForm.reset());
-  uploadForm.addEventListener('submit', (event) => {
+  uploadDialog.addEventListener('close', () => {
+    uploadForm.reset();
+    uploadError.classList.add('hidden');
+    uploadProgress.classList.add('hidden');
+    uploadButton.disabled = false;
+    uploadButton.textContent = 'Upload';
+  });
+
+  uploadForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const file = fileInput.files?.[0];
     if (!file || !uploadForm.reportValidity()) return;
-    // Future integration: hand the selected file and document type to a storage provider here.
-    // This demo only uses the filename; it never reads, uploads, or persists the file.
-    const fileName = file.name;
-    uploadDialog.close();
-    showToast(`Meeting ${documentType} upload simulated successfully: ${fileName}. No file was uploaded or saved.`);
+
+    const mimeType = meetingDocumentMimeType(file.name);
+    if (!mimeType) {
+      uploadError.textContent = 'Choose a supported PDF, document, text file, or image.';
+      uploadError.classList.remove('hidden');
+      return;
+    }
+    if (file.size < 1 || file.size > MAX_MEETING_DOCUMENT_BYTES) {
+      uploadError.textContent = 'The file must be larger than 0 bytes and no larger than 100 MB.';
+      uploadError.classList.remove('hidden');
+      return;
+    }
+
+    uploadError.classList.add('hidden');
+    uploadProgress.textContent = `Uploading ${file.name} (${formatFileSize(file.size)})…`;
+    uploadProgress.classList.remove('hidden');
+    uploadButton.disabled = true;
+    uploadButton.textContent = 'Uploading…';
+
+    try {
+      const meetingId = String(new FormData(uploadForm).get('meetingId') ?? '');
+      const query = new URLSearchParams({
+        meetingId,
+        documentType,
+        fileName: file.name,
+        sizeBytes: String(file.size),
+      });
+      const response = await portalFetch(`/meeting-records?${query}`, {
+        method: 'POST',
+        headers: { 'Content-Type': mimeType },
+        body: file,
+      });
+      await readApiResponse<{ document: MeetingDocument }>(response);
+      await loadRecords();
+      uploadDialog.close();
+      showToast(`${file.name} was uploaded to Google Drive.`);
+    } catch (error) {
+      uploadError.textContent = error instanceof Error ? error.message : 'The upload failed.';
+      uploadError.classList.remove('hidden');
+      uploadProgress.classList.add('hidden');
+      uploadButton.disabled = false;
+      uploadButton.textContent = 'Upload';
+    }
   });
 
-  document.querySelectorAll<HTMLButtonElement>('[data-record-action]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const fileName = button.dataset.fileName!;
-      // Future integration: resolve the document through a storage provider for viewing/downloading.
-      if (button.dataset.recordAction === 'view') {
-        document.getElementById('view-title')!.textContent = fileName;
-        document.getElementById('view-meeting')!.textContent = button.dataset.meetingTitle!;
-        viewDialog.showModal();
-      } else {
-        showToast(`Demo only: ${fileName} is a sample file. Downloads will be available when file storage is connected.`);
-      }
-    });
-  });
+  async function viewDocument(record: MeetingDocument, meetingTitle: string) {
+    const previewable = record.mimeType === 'application/pdf'
+      || record.mimeType === 'text/plain'
+      || record.mimeType.startsWith('image/');
+    document.getElementById('view-title')!.textContent = record.fileName;
+    document.getElementById('view-meeting')!.textContent = meetingTitle;
+    preview.classList.add('hidden');
+    preview.removeAttribute('src');
+    viewDescription.classList.remove('hidden');
+
+    if (!previewable) {
+      viewDescription.textContent = 'A browser preview is not available for this file type. Use Download to open it on your device.';
+      viewDialog.showModal();
+      return;
+    }
+
+    const requestId = ++previewRequest;
+    viewDescription.textContent = 'Loading document preview…';
+    viewDialog.showModal();
+    try {
+      const response = await portalFetch(record.fileUrl);
+      if (!response.ok) await readApiResponse(response);
+      const blob = await response.blob();
+      if (requestId !== previewRequest || !viewDialog.open) return;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(blob);
+      preview.src = previewUrl;
+      preview.title = `${record.fileName} preview`;
+      preview.classList.remove('hidden');
+      viewDescription.classList.add('hidden');
+    } catch (error) {
+      viewDescription.textContent = error instanceof Error ? error.message : 'Unable to load the document preview.';
+    }
+  }
+
+  async function downloadDocument(record: MeetingDocument, button: HTMLButtonElement) {
+    button.disabled = true;
+    try {
+      const separator = record.fileUrl.includes('?') ? '&' : '?';
+      const response = await portalFetch(`${record.fileUrl}${separator}download=1`);
+      if (!response.ok) await readApiResponse(response);
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = record.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to download the document.', 'error');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   document.getElementById('close-view')!.addEventListener('click', () => viewDialog.close());
+  viewDialog.addEventListener('close', () => {
+    previewRequest += 1;
+    preview.removeAttribute('src');
+    preview.classList.add('hidden');
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = null;
+    }
+  });
   document.getElementById('dismiss-toast')!.addEventListener('click', () => {
     toast.classList.add('hidden');
     toast.classList.remove('flex');
     toastMessage.textContent = '';
   });
 
-  async function load() {
+  async function initialise() {
     try {
       await requirePortalSession();
-      document.getElementById('records-content')!.classList.remove('hidden');
+      await loadRecords();
+      content.classList.remove('hidden');
     } catch (error) {
-      showPortalError(error, document.getElementById('records-error')!);
+      showPortalError(error, recordsError);
     } finally {
-      document.getElementById('records-loading')!.classList.add('hidden');
+      loading.classList.add('hidden');
     }
   }
-  load();
+  void initialise();
 </script>

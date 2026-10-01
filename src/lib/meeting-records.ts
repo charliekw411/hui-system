@@ -4,12 +4,33 @@ export interface Meeting {
   meetingDate: string;
 }
 
+export const MEETING_DOCUMENT_TYPES = ['minutes', 'notes'] as const;
+export type MeetingDocumentType = (typeof MEETING_DOCUMENT_TYPES)[number];
+
+export const MAX_MEETING_DOCUMENT_BYTES = 100_000_000;
+export const MEETING_DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.odt,.rtf,.txt,.jpg,.jpeg,.png';
+
+const MEETING_DOCUMENT_MIME_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+  '.rtf': 'application/rtf',
+  '.txt': 'text/plain',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+};
+
 export interface MeetingDocument {
   id: string;
   meetingId: string;
-  documentType: 'minutes' | 'notes';
+  documentType: MeetingDocumentType;
   fileName: string;
   fileUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
 }
 
 export interface MeetingRecords {
@@ -17,25 +38,18 @@ export interface MeetingRecords {
   documents: MeetingDocument[];
 }
 
-const mockMeetings: Meeting[] = [
-  { id: 'hui-july-2026', title: 'July 2026 Hui', meetingDate: '2026-07-20' },
-  { id: 'hui-september-2026', title: 'September 2026 Hui', meetingDate: '2026-09-15' },
-  { id: 'hui-august-2026', title: 'August 2026 Hui', meetingDate: '2026-08-18' },
-];
-
-const mockDocuments: MeetingDocument[] = mockMeetings.flatMap((meeting) =>
-  (['minutes', 'notes'] as const).map((documentType) => ({
-    id: `${meeting.id}-${documentType}`,
-    meetingId: meeting.id,
-    documentType,
-    fileName: documentType === 'minutes' ? 'Approved Minutes.pdf' : 'Meeting Notes.pdf',
-    // Mock documents have no downloadable URL. A future storage provider will supply it.
-    fileUrl: '',
-  })),
-);
-
 export function sortMeetings(meetings: Meeting[]): Meeting[] {
   return [...meetings].sort((a, b) => b.meetingDate.localeCompare(a.meetingDate));
+}
+
+export function isMeetingDocumentType(value: unknown): value is MeetingDocumentType {
+  return typeof value === 'string'
+    && MEETING_DOCUMENT_TYPES.includes(value as MeetingDocumentType);
+}
+
+export function meetingDocumentMimeType(fileName: string): string | null {
+  const extension = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
+  return MEETING_DOCUMENT_MIME_TYPES[extension] ?? null;
 }
 
 export function formatMeetingDate(meetingDate: string): string {
@@ -45,12 +59,4 @@ export function formatMeetingDate(meetingDate: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   }).format(new Date(`${meetingDate}T00:00:00Z`));
-}
-
-export async function getMeetingRecords(): Promise<MeetingRecords> {
-  // Replace this local source with a storage provider later, keeping the UI's data contract.
-  return {
-    meetings: sortMeetings(mockMeetings).map((meeting) => ({ ...meeting })),
-    documents: mockDocuments.map((document) => ({ ...document })),
-  };
 }
