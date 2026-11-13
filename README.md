@@ -26,7 +26,7 @@ It is built to be operated by the trust's approved trustees, and is fully self-c
 
 ## What it does
 
-- **Public site (`/`)** — shows the next upcoming published hui (title, date, time, location, _Join Zoom_ button, passcode, agenda download, attached documents) and an archive of previous hui details. Meeting records and documents for past hui require trustee sign-in.
+- **Public site (`/`)** — shows the current or next upcoming published hui (title, date, time, location, _Join Zoom_ button, passcode, agenda download, attached documents), keeping it featured until six hours after its scheduled start, and an archive of previous hui details. Meeting records and documents for past hui require trustee sign-in.
 - **Admin portal (`/admin`)** — Google Sign-In for active, allowlisted trustees, plus the unchanged trust administrator's emergency email/password login. Every approved trustee can create, edit, publish, cancel, and delete hui and upload documents. Dashboard lists every hui with its status (draft / published / cancelled).
 - **Zoom** — manual only. Trustees paste their own Zoom link and passcode into the form. There is no Zoom API or OAuth.
 
@@ -426,9 +426,11 @@ This section is written for a non-technical trustee. You only need a web browser
 - A **Draft** hui is visible to authorized trustees. When you are ready for whānau to see it,
   either set the status to **Published** in the form, or click **Publish** next to
   the hui on the dashboard.
-- Only the **next upcoming published** hui appears at the top of the public page.
-  Once its scheduled start time passes, a published hui moves to the **Previous Hui**
-  archive. Past meeting records and documents are available to signed-in trustees
+- The earliest **published** hui whose start is no more than six hours ago appears
+  at the top of the public page, keeping its original heading and meeting link
+  available during that window. After six hours past its scheduled start, it moves
+  to the **Previous Hui** archive. The public next-hui API uses the same window.
+  Past meeting records and documents are available to signed-in trustees
   through **Meeting Records**.
 
 ### Editing or cancelling a hui

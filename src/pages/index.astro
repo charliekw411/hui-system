@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import HuiCard from '../components/HuiCard.astro';
 import { createClient } from '@supabase/supabase-js';
 import type { Hui } from '../lib/supabase';
+import { getHuiArchiveCutoff } from '../lib/hui-timing';
 
 export const prerender = false;
 
@@ -19,21 +20,21 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const nowIso = new Date().toISOString();
+  const archiveCutoff = getHuiArchiveCutoff();
 
   const [{ data: upcoming, error: upErr }, { data: past, error: pastErr }] = await Promise.all([
     supabase
       .from('hui')
       .select('*, documents(*)')
       .eq('status', 'published')
-      .gte('scheduled_at', nowIso)
+      .gte('scheduled_at', archiveCutoff)
       .order('scheduled_at', { ascending: true })
       .limit(1),
     supabase
       .from('hui')
       .select('*, documents(*)')
       .eq('status', 'published')
-      .lt('scheduled_at', nowIso)
+      .lt('scheduled_at', archiveCutoff)
       .order('scheduled_at', { ascending: false })
       .limit(20),
   ]);

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { breakGlassAccess, isPortalUser, type PortalUser } from '../src/lib/auth-policy';
+import { getHuiArchiveCutoff } from '../src/lib/hui-timing';
 import {
   isMeetingDocumentType,
   MAX_MEETING_DOCUMENT_BYTES,
@@ -230,13 +231,13 @@ const DRIVE_FILE_ID_RE = /^[a-zA-Z0-9_-]{10,200}$/;
 // GET /api/hui/next — next published hui with documents (public)
 async function getNextHui(env: Env): Promise<Response> {
   const supabase = serviceClient(env);
-  const nowIso = new Date().toISOString();
+  const archiveCutoff = getHuiArchiveCutoff();
 
   const { data, error: dbError } = await supabase
     .from('hui')
     .select('*, documents(*)')
     .eq('status', 'published')
-    .gte('scheduled_at', nowIso)
+    .gte('scheduled_at', archiveCutoff)
     .order('scheduled_at', { ascending: true })
     .limit(1)
     .maybeSingle();

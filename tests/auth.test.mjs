@@ -34,7 +34,7 @@ function mockSupabase(t, { userId = trusteeId, email = profile.email, access = p
   t.mock.method(globalThis, 'fetch', async (input, init = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
     assert.equal(url.origin, env.SUPABASE_URL, 'Tests must not access live services');
-    calls.push({ path: url.pathname, method: init.method ?? 'GET', headers: new Headers(init.headers) });
+    calls.push({ path: url.pathname, query: url.searchParams, method: init.method ?? 'GET', headers: new Headers(init.headers) });
     if (url.pathname === '/auth/v1/user') {
       return Response.json(authStatus === 200 ? {
         id: userId, email, aud: 'authenticated', created_at: '2026-01-01',
@@ -154,6 +154,18 @@ test('public next-hui route remains anonymous', async (t) => {
   const calls = mockSupabase(t, { access: null });
   assert.equal((await worker.fetch(request('/hui/next', 'GET', undefined, ''), env)).status, 200);
   assert.equal(calls.some((call) => call.path === '/auth/v1/user'), false);
+});
+
+test('public next-hui route retains the six-hour window and earliest-first ordering', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-14T09:00:00+13:00') });
+  const calls = mockSupabase(t);
+  const response = await worker.fetch(request('/hui/next', 'GET', undefined, ''), env);
+  assert.equal(response.status, 200);
+  const { query } = calls.find((call) => call.path === '/rest/v1/hui');
+  assert.equal(query.get('scheduled_at'), 'gte.2026-11-13T14:00:00.000Z');
+  assert.equal(query.get('status'), 'eq.published');
+  assert.equal(query.get('order'), 'scheduled_at.asc');
+  assert.equal(query.get('limit'), '1');
 });
 
 test('read responses for private hui are never cacheable', async (t) => {
